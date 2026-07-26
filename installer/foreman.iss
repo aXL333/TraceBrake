@@ -49,6 +49,14 @@ Name: "desktopicon"; Description: "Create a desktop shortcut";                  
 ; Copy everything the publish step produced (single-file exe plus any extracted natives).
 Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; Prevent removed extension/helper files from surviving an upgrade and tripping the exact runtime manifest.
+Type: filesandordirs; Name: "{app}\extensions"
+Type: filesandordirs; Name: "{app}\sidecar"
+Type: filesandordirs; Name: "{app}\guardian"
+Type: filesandordirs; Name: "{app}\cu-sidecar"
+Type: filesandordirs; Name: "{app}\cu-pilot"
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}";   Filename: "{app}\{#MyAppExeName}"
 Name: "{userdesktop}\{#MyAppName}";    Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon

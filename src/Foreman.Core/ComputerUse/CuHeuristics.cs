@@ -28,28 +28,21 @@ public static class CuHeuristics
 
     public static CuVerdict? Evaluate(CuAction a)
     {
+        // Reference policies follow the data, not a conventional verb or argument name. Future executor verbs
+        // therefore cannot create sibling paths around operator approval.
+        if (a.Args.Values.Any(Foreman.Core.Vault.VaultReference.HasPaymentCardReference))
+            return CuVerdict.Hold(Src,
+                "payment-card data release requires explicit operator approval",
+                final: true);
+
+        if (a.Args.Values.Any(v => Foreman.Core.Vault.VaultReference.Tokens(v)
+                .Any(t => Foreman.Core.Vault.VaultReference.TrySignup(t, out _))))
+            return CuVerdict.Hold(Src,
+                "agent self-signup creates a NEW saved credential — operator approval required before it can be filled",
+                final: true);
+
         if (string.Equals(a.Verb, "type", StringComparison.OrdinalIgnoreCase))
         {
-            // Payment-card release is financially consequential. Even with per-card harness ACL, exact-origin binding
-            // and a presence tap, never let it ride an automatic allow path.
-            if (a.Args.Values.Any(Foreman.Core.Vault.VaultReference.HasPaymentCardReference))
-                return CuVerdict.Hold(Src,
-                    "payment-card data release requires explicit operator approval",
-                    final: true);
-
-            // Agent self-signup ({{vault:origin/signup}}) is a vault WRITE — it GENERATES + stores a NEW credential.
-            // Never let it ride the auto-Allow fast path on a benign-looking fieldType: HOLD so the operator must
-            // explicitly approve the creation (cu_approve) before the executor can resolve it. (A {{vault:o/field}}
-            // READ keeps auto-Allow + the mandatory Hello tap as its gate; only the WRITE is forced to operator review.)
-            // Match a signup token ANYWHERE in any arg (not just a whole-arg value): the WRITE path (cu_resolve_vault)
-            // keys on a {{vault:o/signup}} TOKEN present in the action, so the HOLD must use the same granularity or an
-            // embedded token would auto-Allow while still triggering the write. Token-level here keeps the two in lockstep.
-            if (a.Args.Values.Any(v => Foreman.Core.Vault.VaultReference.Tokens(v)
-                    .Any(t => Foreman.Core.Vault.VaultReference.TrySignup(t, out _))))
-                return CuVerdict.Hold(Src,
-                    "agent self-signup creates a NEW saved credential — operator approval required before it can be filled",
-                    final: true);   // a vault WRITE: the deep judge must never auto-clear this hold
-
             // An AI typing into a password / credential field is a prohibited action — hold for the operator to do it.
             var field = a.Arg("fieldType");
             if (field.Contains("password", StringComparison.OrdinalIgnoreCase)

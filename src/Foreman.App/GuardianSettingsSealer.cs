@@ -29,19 +29,21 @@ internal sealed class GuardianSettingsSealer : ISettingsSealer
     /// Returns a guardian-backed sealer iff the service is installed AND the pipe is confirmed SYSTEM-owned
     /// (anti-squat); otherwise null, so the caller keeps the local install-secret path. Bounded; never throws.
     /// </summary>
-    public static GuardianSettingsSealer? TryCreate(Func<string?> localSecret)
+    public static ISettingsSealer? TryCreate(Func<string?> localSecret)
     {
         if (!GuardianDiscovery.IsGuardianInstalled()) return null;
         var client = new GuardianPipeClient();
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            if (!client.IsServerSystemOwnedAsync(cts.Token).GetAwaiter().GetResult()) return null;
-            if (!GuardianTrust.IsAccepted(client.HelloAsync(cts.Token).GetAwaiter().GetResult())) return null;
+            if (!client.IsServerSystemOwnedAsync(cts.Token).GetAwaiter().GetResult())
+                return new UnavailableGuardianSettingsSealer(localSecret);
+            if (!GuardianTrust.IsAccepted(client.HelloAsync(cts.Token).GetAwaiter().GetResult()))
+                return new UnavailableGuardianSettingsSealer(localSecret);
         }
         catch
         {
-            return null;
+            return new UnavailableGuardianSettingsSealer(localSecret);
         }
         return new GuardianSettingsSealer(client, localSecret);
     }
@@ -74,7 +76,20 @@ internal sealed class GuardianSettingsSealer : ISettingsSealer
                 var res = _client.VerifySettingsAsync(
                     SettingsSeal.SecurityProjection(settings), storedSeal, cts.Token).GetAwaiter().GetResult();
                 if (res is null) return SettingsSealVerdict.Unverified;   // guardian unreachable → can't confirm OR refute
-                return Enum.TryParse<SettingsSealVerdict>(res.Verdict, out var v) ? v : SettingsSealVerdict.Unsealed;
+                var verdict = Enum.TryParse<SettingsSealVerdict>(res.Verdict, out var v)
+                    ? v
+                    : SettingsSealVerdict.Unsealed;
+                if (verdict != SettingsSealVerdict.Tampered) return verdict;
+
+                // g1 predates projection versioning. Verify once against the retained predecessor, then let the
+                // store reseal the unchanged settings under the current projection.
+                var legacy = _client.VerifySettingsAsync(
+                    SettingsSeal.LegacySecurityProjectionV1(settings), storedSeal, cts.Token).GetAwaiter().GetResult();
+                return legacy is not null &&
+                       Enum.TryParse<SettingsSealVerdict>(legacy.Verdict, out var legacyVerdict) &&
+                       legacyVerdict == SettingsSealVerdict.Sealed
+                    ? SettingsSealVerdict.LegacySealed
+                    : SettingsSealVerdict.Tampered;
             }
             catch
             {

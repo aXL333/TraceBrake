@@ -81,7 +81,23 @@ public sealed class EventBusTests
         Assert.Contains(history.Snapshot(), e => e.Id == arriving.Id);
     }
 
+    [Fact]
+    public void AttackerControlledMcpFilename_DoesNotChangeHostProvenance()
+    {
+        var decoyRead = new CommandAlertEvent(
+            DateTimeOffset.UnixEpoch, ForemanSeverity.Critical, "MCP.exe (pid 4242)", "decoy read",
+            "MCP.exe", "cred-decoy-read", "Decoy read", "desc", "guidance", 4242);
+
+        Assert.False(EventRetentionPolicy.IsAgentReported(decoyRead));
+
+        var history = new BoundedEventHistory(251);
+        history.Add(decoyRead);
+        for (var i = 0; i < 300; i++) history.Add(AgentCritical(i));
+        Assert.Contains(history.Snapshot(), e => e.Id == decoyRead.Id);
+    }
+
     private static CommandAlertEvent AgentCritical(int index) => new(
         DateTimeOffset.UtcNow.AddMilliseconds(index), ForemanSeverity.Critical,
-        "MCP.ReportSuspiciousCommand", $"fabricated {index}", "rm -rf /", "del-001", "delete", "test", "none", 0);
+        "MCP.ReportSuspiciousCommand", $"fabricated {index}", "rm -rf /", "del-001", "delete", "test", "none", 0)
+        { Origin = EventOrigin.Agent };
 }

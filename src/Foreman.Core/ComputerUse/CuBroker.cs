@@ -112,6 +112,15 @@ public sealed class CuBroker
             return bad;
         }
 
+        if (action.Modality == CuModality.Browser && !CuVerbs.IsKnownBrowser(action.Verb))
+        {
+            var bad = new CuBrokerItem(id, action, CuActionState.Blocked,
+                CuVerdict.Block("broker", "unsupported browser verb"), DateTimeOffset.UtcNow,
+                Error: "Unsupported browser verb.", UpdatedAt: DateTimeOffset.UtcNow);
+            _items[id] = bad;
+            return bad;
+        }
+
         if (action.Modality == CuModality.Android && !CuVerbs.IsKnownAndroid(action.Verb))
         {
             var bad = new CuBrokerItem(id, action, CuActionState.Blocked,

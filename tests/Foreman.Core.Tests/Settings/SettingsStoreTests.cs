@@ -59,6 +59,63 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void DeletedPrimary_WithVerifiedRecovery_RestoresSealedPosture()
+    {
+        SettingsStore.IntegritySecret = () => "test-install-secret";
+        var approved = new ForemanSettings { CuDriver = "codex" };
+        approved.PresenceLock.Enabled = true;
+        SettingsStore.Save(approved, _path);
+        File.Delete(_path);
+
+        var loaded = SettingsStore.Load(_path);
+
+        Assert.Equal(SettingsSealVerdict.Tampered, SettingsStore.LastSealVerdict);
+        Assert.True(loaded.PresenceLock.Enabled);
+        Assert.Equal("codex", loaded.CuDriver);
+        Assert.True(File.Exists(_path));
+        Assert.Contains("was removed", SettingsStore.LastLoadFault);
+    }
+
+    [Fact]
+    public void GuardianSeal_WhenAuthorityTemporarilyUnavailable_IsNotQuarantined()
+    {
+        var settings = new ForemanSettings { CuDriver = "codex" };
+        settings.PresenceLock.Enabled = true;
+        File.WriteAllText(_path, System.Text.Json.JsonSerializer.Serialize(settings));
+        File.WriteAllText(_path + ".seal", SettingsSeal.GuardianScheme + "unavailable-test-seal");
+        SettingsStore.Sealer = new UnavailableGuardianSettingsSealer(() => "local-secret");
+
+        var loaded = SettingsStore.Load(_path);
+
+        Assert.Equal(SettingsSealVerdict.Unverified, SettingsStore.LastSealVerdict);
+        Assert.True(loaded.PresenceLock.Enabled);
+        Assert.Equal("codex", loaded.CuDriver);
+        Assert.True(File.Exists(_path));
+        Assert.Empty(Directory.GetFiles(_dir, "*.tampered"));
+    }
+
+    [Fact]
+    public void PreviousProjectionSeal_IsPreservedAndUpgradedWithoutAlarm()
+    {
+        const string secret = "test-install-secret";
+        SettingsStore.IntegritySecret = () => secret;
+        var settings = new ForemanSettings { CuDriver = "codex" };
+        settings.PresenceLock.Enabled = true;
+        var json = System.Text.Json.JsonSerializer.Serialize(settings);
+        var legacySeal = SettingsSeal.ComputeMac(SettingsSeal.LegacySecurityProjectionV1(settings), secret);
+        File.WriteAllText(_path, json);
+        File.WriteAllText(_path + ".seal", legacySeal);
+
+        var loaded = SettingsStore.Load(_path);
+
+        Assert.True(loaded.PresenceLock.Enabled);
+        Assert.Equal("codex", loaded.CuDriver);
+        Assert.Equal(SettingsSealVerdict.Sealed, SettingsStore.LastSealVerdict);
+        Assert.Null(SettingsStore.LastLoadFault);
+        Assert.StartsWith(SettingsSeal.LocalScheme, File.ReadAllText(_path + ".seal"));
+    }
+
+    [Fact]
     public void CorruptFile_IsQuarantined_DefaultsLoaded_FaultReported()
     {
         File.WriteAllText(_path, "{ this is not valid json ");
@@ -73,6 +130,24 @@ public sealed class SettingsStoreTests : IDisposable
         // and the fault is reported for the UI to surface
         Assert.NotNull(SettingsStore.LastLoadFault);
         Assert.Contains(".bad", SettingsStore.LastLoadFault!);
+    }
+
+    [Fact]
+    public void CorruptPrimary_WithVerifiedRecovery_RestoresInsteadOfResetting()
+    {
+        SettingsStore.IntegritySecret = () => "test-install-secret";
+        var approved = new ForemanSettings { CuDriver = "codex" };
+        approved.PresenceLock.Enabled = true;
+        SettingsStore.Save(approved, _path);
+        File.WriteAllText(_path, "{broken");
+
+        var loaded = SettingsStore.Load(_path);
+
+        Assert.Equal(SettingsSealVerdict.Tampered, SettingsStore.LastSealVerdict);
+        Assert.True(SettingsStore.RecoveryRestored);
+        Assert.True(loaded.PresenceLock.Enabled);
+        Assert.Equal("codex", loaded.CuDriver);
+        Assert.True(File.Exists(_path));
     }
 
     [Fact]

@@ -6,7 +6,7 @@ namespace Foreman.Core.Events;
 public static class EventRetentionPolicy
 {
     public static bool IsAgentReported(ForemanEvent evt) =>
-        evt.Source.StartsWith("MCP.", StringComparison.OrdinalIgnoreCase);
+        evt.Origin == EventOrigin.Agent;
 
     public static IEnumerable<ForemanEvent> SelectVictims(
         IReadOnlyCollection<ForemanEvent> events,

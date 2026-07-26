@@ -379,7 +379,7 @@ public static class ForemanMcpTools
                     match.Description,
                     match.Guidance,
                     0
-                ));
+                ) { Origin = EventOrigin.Agent });
                 alertPublished = true;
             }
             else
@@ -1673,7 +1673,8 @@ public static class ForemanMcpTools
         [Description("actionId being executed")] string actionId,
         [Description("The whole vault reference to resolve (must be one present in the approved action)")] string reference,
         [Description("The live target origin/host you are about to fill into (e.g. the tab host)")] string liveOrigin,
-        Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null,
+        [Description("The exact action argument being filled (normally 'value' or 'text')")] string? argumentKey = null)
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { ok = false, reason = "Mediated computer use is not available." };
@@ -1686,10 +1687,11 @@ public static class ForemanMcpTools
         // wired in App + the vault being unlocked only when the operator chooses; see docs/vault-design.md.
         if (!caller.IsOperator && !string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
             return new { ok = false, reason = "Only the browser-extension executor (or operator) may resolve a vault reference." };
-        if (string.IsNullOrWhiteSpace(actionId) || string.IsNullOrWhiteSpace(reference) || string.IsNullOrWhiteSpace(liveOrigin))
-            return new { ok = false, reason = "actionId, reference, and liveOrigin are required." };
-        if (reference.Length > 4096 || liveOrigin.Length > 2048)
-            return new { ok = false, reason = "reference/liveOrigin too long." };
+        if (string.IsNullOrWhiteSpace(actionId) || string.IsNullOrWhiteSpace(reference) ||
+            string.IsNullOrWhiteSpace(liveOrigin) || string.IsNullOrWhiteSpace(argumentKey))
+            return new { ok = false, reason = "actionId, reference, liveOrigin, and argumentKey are required." };
+        if (reference.Length > 4096 || liveOrigin.Length > 2048 || argumentKey.Length > 64)
+            return new { ok = false, reason = "reference/liveOrigin/argumentKey too long." };
 
         // Bind resolution to a REAL, claimed (executing) browser action AND to a WHOLE {{vault:...}} token the agent
         // actually put in it (case-insensitive) — not a loose substring — so a compromised extension can't resolve
@@ -1700,18 +1702,20 @@ public static class ForemanMcpTools
         if (item.State != Foreman.Core.ComputerUse.CuActionState.Executing)
             return new { ok = false, reason = "Action is not executing (claim it first)." };
         var want = reference.Trim();
+        if (!item.Action.Args.TryGetValue(argumentKey.Trim(), out var argumentValue))
+            return new { ok = false, reason = "The named argument was not part of the approved action." };
         var inAction = Foreman.Core.Vault.VaultReference.HasReference(want)
-            && item.Action.Args.Values.SelectMany(v => Foreman.Core.Vault.VaultReference.Tokens(v))
+            && Foreman.Core.Vault.VaultReference.Tokens(argumentValue)
                    .Any(t => string.Equals(t, want, StringComparison.OrdinalIgnoreCase));
         if (!inAction) return new { ok = false, reason = "That reference was not part of the approved action." };
         if (Foreman.Core.Vault.VaultReference.HasPaymentCardReference(want)
-            && !item.Action.Args.Values.Any(v => string.Equals((v ?? string.Empty).Trim(), want, StringComparison.OrdinalIgnoreCase)))
+            && !string.Equals((argumentValue ?? string.Empty).Trim(), want, StringComparison.OrdinalIgnoreCase))
             return new { ok = false, reason = "A payment-card reference must be the entire field value." };
         // A signup is a WRITE that fills the WHOLE field with a freshly-minted password; it is only valid as the ENTIRE
         // arg value, never embedded in other text. Requiring whole-arg here makes the WRITE agree with the fast-path
         // HOLD (which forces any signup-bearing action to operator approval) so an embedded signup token can never mint.
         if (Foreman.Core.Vault.VaultReference.TrySignup(want, out _)
-            && !item.Action.Args.Values.Any(v => string.Equals((v ?? string.Empty).Trim(), want, StringComparison.OrdinalIgnoreCase)))
+            && !string.Equals((argumentValue ?? string.Empty).Trim(), want, StringComparison.OrdinalIgnoreCase))
             return new { ok = false, reason = "A signup reference must be the entire field value." };
 
         var resolve = state.ResolveVaultAsync;

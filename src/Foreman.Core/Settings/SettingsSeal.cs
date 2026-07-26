@@ -19,6 +19,10 @@ public enum SettingsSealVerdict
     /// posture is unverified this launch. The app surfaces this as a notice rather than blocking load.
     /// </summary>
     Unverified,
+    /// <summary>
+    /// A valid seal from a recognised older projection. Preserve the settings and upgrade the seal.
+    /// </summary>
+    LegacySealed,
 }
 
 /// <summary>
@@ -35,6 +39,7 @@ public enum SettingsSealVerdict
 /// </summary>
 public static class SettingsSeal
 {
+    public const string LocalScheme = "l2:";
     /// <summary>
     /// Deterministic projection of the fields whose silent change weakens Foreman's posture (the presence lock,
     /// log persistence/integrity, elevation, decoy auditing, MCP peer binding, disabled harnesses, emergency rule
@@ -87,6 +92,42 @@ public static class SettingsSeal
         return JsonSerializer.Serialize(projection);
     }
 
+    /// <summary>Previous release projection retained only to verify and migrate pre-ADB seals.</summary>
+    public static string LegacySecurityProjectionV1(ForemanSettings s)
+    {
+        var projection = new
+        {
+            presenceEnabled = s.PresenceLock.Enabled,
+            presenceScope   = (int)s.PresenceLock.Scope,
+            presenceCred    = s.PresenceLock.CredentialId ?? "",
+            eventLogPersist = s.EventLogPersist,
+            hashChain       = s.LogIntegrity.HashChainEnabled,
+            runElevated     = s.RunElevated,
+            scanMcpTools    = s.ScanMcpTools,
+            monitorAll      = s.MonitorAllProcesses,
+            peerBinding     = s.McpPeerBindingEnforce,
+            autoExtPair     = s.AllowAutoExtensionPairing,
+            decoyEnabled    = s.DecoyCredentials.Enabled,
+            decoyReadAudit  = s.DecoyCredentials.EnableReadAuditing,
+            osEventLog      = s.OsEventLog.Enabled,
+            cuDesktop       = s.CuDesktopEnabled,
+            cuDriverHost    = s.CuDriverHostEnabled,
+            cuAutoGrant     = s.CuDesktopAutoGrant,
+            cuDriver        = s.CuDriver ?? "",
+            cuAgentCommand  = s.CuAgentCommand ?? "",
+            cuAgentArgs     = s.CuAgentArguments ?? "",
+            cuAgentWorkDir  = s.CuAgentWorkingDir ?? "",
+            disabled        = s.DisabledHarnesses.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            emergency       = s.EmergencyRuleIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            trust           = s.HarnessTrust.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                                            .Select(kv => $"{kv.Key.ToLowerInvariant()}={kv.Value}").ToArray(),
+            capabilities    = s.HarnessCapabilityRestrictions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                                            .Select(kv => $"{kv.Key.ToLowerInvariant()}={(int)kv.Value.ComputerUse}:{(int)kv.Value.BrowserUse}").ToArray(),
+            mutes           = s.Mutes.OrderBy(MuteKey, StringComparer.Ordinal).Select(MuteKey).ToArray(),
+        };
+        return JsonSerializer.Serialize(projection);
+    }
+
     private static string MuteKey(Models.MuteEntry m) => $"{m.Scope}|{m.Value}|{m.Until:O}";
 
     /// <summary>
@@ -112,7 +153,8 @@ public static class SettingsSeal
     }
 
     /// <summary>HMAC-SHA256(install secret, security projection), base64. The seal written next to settings.json.</summary>
-    public static string Compute(ForemanSettings s, string secret) => ComputeMac(SecurityProjection(s), secret);
+    public static string Compute(ForemanSettings s, string secret) =>
+        LocalScheme + ComputeMac(SecurityProjection(s), secret);
 
     /// <summary>
     /// Compares the loaded settings' security subset to the stored seal (constant-time). A seal carrying the
@@ -123,9 +165,40 @@ public static class SettingsSeal
     {
         if (string.IsNullOrEmpty(storedSeal)) return SettingsSealVerdict.Unsealed;
         if (storedSeal.StartsWith(GuardianScheme, StringComparison.Ordinal)) return SettingsSealVerdict.Unsealed;
-        return MacEquals(Compute(loaded, secret), storedSeal)
-            ? SettingsSealVerdict.Sealed
-            : SettingsSealVerdict.Tampered;
+        if (storedSeal.StartsWith(LocalScheme, StringComparison.Ordinal))
+            return MacEquals(ComputeMac(SecurityProjection(loaded), secret), storedSeal[LocalScheme.Length..])
+                ? SettingsSealVerdict.Sealed
+                : SettingsSealVerdict.Tampered;
+
+        if (storedSeal.Contains(':', StringComparison.Ordinal))
+            return SettingsSealVerdict.Tampered;
+        if (MacEquals(ComputeMac(SecurityProjection(loaded), secret), storedSeal) ||
+            MacEquals(ComputeMac(LegacySecurityProjectionV1(loaded), secret), storedSeal))
+            return SettingsSealVerdict.LegacySealed;
+        return SettingsSealVerdict.Tampered;
+    }
+}
+
+/// <summary>
+/// Fail-safe used while an installed Guardian is temporarily unreachable. It never creates a local replacement for
+/// a guardian seal, and classifies g1 evidence as unverified rather than absent.
+/// </summary>
+public sealed class UnavailableGuardianSettingsSealer : ISettingsSealer
+{
+    private readonly Func<string?> _localSecret;
+
+    public UnavailableGuardianSettingsSealer(Func<string?> localSecret) => _localSecret = localSecret;
+
+    public string? Compute(ForemanSettings settings) => null;
+
+    public SettingsSealVerdict Verify(ForemanSettings settings, string? storedSeal)
+    {
+        if (storedSeal?.StartsWith(SettingsSeal.GuardianScheme, StringComparison.Ordinal) == true)
+            return SettingsSealVerdict.Unverified;
+        var secret = _localSecret();
+        return string.IsNullOrEmpty(secret)
+            ? SettingsSealVerdict.Unsealed
+            : SettingsSeal.Verify(settings, storedSeal, secret);
     }
 }
 

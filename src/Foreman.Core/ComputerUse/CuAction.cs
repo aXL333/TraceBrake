@@ -70,6 +70,18 @@ public static class CuVerbs
         return v.Length is > 0 and <= 40 && DesktopVerbs.Contains(v);
     }
 
+    private static readonly HashSet<string> BrowserVerbs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "navigate", "list_tabs", "tabs", "read", "goto", "back", "forward",
+        "type", "click", "scroll", "screenshot",
+    };
+
+    public static bool IsKnownBrowser(string? verb)
+    {
+        var v = (verb ?? string.Empty).Trim();
+        return v.Length is > 0 and <= 40 && BrowserVerbs.Contains(v);
+    }
+
     // Deliberately bounded ADB surface. There is no raw shell/exec verb: every Android operation is rebuilt by
     // Foreman from typed arguments before it reaches adb. Observe-only inventory/capture is the safe fast path;
     // tap/type/swipe/key are state-changing and the broker holds them for explicit operator approval.

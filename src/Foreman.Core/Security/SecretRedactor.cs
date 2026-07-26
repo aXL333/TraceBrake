@@ -60,6 +60,13 @@ public static class SecretRedactor
                    Opts | RegexOptions.Singleline), Mask),
     ];
 
+    private static readonly Regex PaymentCardCandidate = new(
+        @"(?<!\d)(?:\d[ -]?){11,18}\d(?!\d)", Opts, TimeSpan.FromMilliseconds(50));
+
+    private static readonly Regex NamedCardValue = new(
+        @"(\b(?:card\s*(?:number|no\.?|#|security\s*code|expiry)|payment\s*card|credit\s*card|debit\s*card|pan|cvv|cvc|expiration)\s*[=:]\s*)[^\s;,""']+",
+        Opts, TimeSpan.FromMilliseconds(50));
+
     /// <summary>Returns <paramref name="input"/> with secret-shaped substrings masked. Idempotent.</summary>
     public static string Redact(string? input)
     {
@@ -67,6 +74,9 @@ public static class SecretRedactor
         var s = input;
         foreach (var (rx, replacement) in Rules)
             s = rx.Replace(s, replacement);
+        s = NamedCardValue.Replace(s, "$1" + Mask);
+        s = PaymentCardCandidate.Replace(s, static match =>
+            PaymentCardDetection.PassesLuhn(match.Value) ? Mask : match.Value);
         return s;
     }
 

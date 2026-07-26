@@ -49,6 +49,8 @@ public sealed class SettingsStore
     /// after the event bus is wired so the attempted edit remains operator-visible.
     /// </summary>
     public static SettingsSealVerdict LastSealVerdict { get; private set; } = SettingsSealVerdict.Unsealed;
+    /// <summary>True when this load rejected the primary but returned a verified last-known-good snapshot.</summary>
+    public static bool RecoveryRestored { get; private set; }
 
     public static ForemanSettings Load() => Load(_path);
 
@@ -59,7 +61,31 @@ public sealed class SettingsStore
     {
         LastLoadFault = null;
         LastSealVerdict = SettingsSealVerdict.Unsealed;
-        if (!File.Exists(path)) return new ForemanSettings();
+        RecoveryRestored = false;
+        if (!File.Exists(path))
+        {
+            var missingSealer = Sealer;
+            var missingSecret = missingSealer is null ? IntegritySecret?.Invoke() : null;
+            var recovered = TryReadRecovery(path, missingSealer, missingSecret);
+            if (recovered is not null)
+            {
+                LastSealVerdict = SettingsSealVerdict.Tampered;
+                TryRestorePrimary(path, recovered.Value.Json, recovered.Value.Seal);
+                RecoveryRestored = true;
+                LastLoadFault = "settings.json was removed after settings sealing had been established. The sealed " +
+                                "last-known-good settings were restored before Foreman initialised.";
+                return recovered.Value.Settings;
+            }
+            if (SafeHasPriorSealEvidence())
+            {
+                LastSealVerdict = SettingsSealVerdict.Tampered;
+                LastLoadFault = "settings.json was removed after settings sealing had been established. No verified " +
+                                "recovery snapshot was available, so safe defaults were loaded.";
+            }
+            return new ForemanSettings();
+        }
+        var loadSealer = Sealer;
+        var loadSecret = loadSealer is null ? IntegritySecret?.Invoke() : null;
         try
         {
             var json = File.ReadAllText(path);
@@ -69,11 +95,24 @@ public sealed class SettingsStore
             // lock / log persistence) — bypassing the UI gates entirely. Foreman re-seals on every save, so a
             // mismatch here means the file was changed by something other than Foreman. We can't PREVENT that
             // (no privilege boundary), but the App turns this verdict into a loud Critical + OS-event-log entry.
-            var sealer = Sealer;
-            var secret = sealer is null ? IntegritySecret?.Invoke() : null;
+            var sealer = loadSealer;
+            var secret = loadSecret;
             var storedSeal = ReadSeal(path);
             LastSealVerdict = Verify(settings, storedSeal, sealer, secret);
 
+            if (LastSealVerdict == SettingsSealVerdict.LegacySealed)
+            {
+                if (TryUpgradeSeal(path, json, settings, sealer, secret))
+                {
+                    LastSealVerdict = SettingsSealVerdict.Sealed;
+                    TryRecordSealEvidence();
+                }
+                else
+                {
+                    LastSealVerdict = SettingsSealVerdict.Unverified;
+                }
+                return settings;
+            }
             if (LastSealVerdict == SettingsSealVerdict.Sealed)
             {
                 // Keep a verified recovery copy of the exact settings Foreman last accepted. It is deliberately
@@ -104,6 +143,7 @@ public sealed class SettingsStore
                 if (recovered is not null)
                 {
                     TryRestorePrimary(path, recovered.Value.Json, recovered.Value.Seal);
+                    RecoveryRestored = true;
                     LastLoadFault = "A direct edit to security-significant settings was rejected before Foreman " +
                                     "initialised. The sealed last-known-good settings were restored; the attempted " +
                                     "file was quarantined with a .tampered suffix.";
@@ -121,6 +161,19 @@ public sealed class SettingsStore
         catch (Exception ex)
         {
             var quarantine = Quarantine(path);
+            var recovered = TryReadRecovery(path, loadSealer, loadSecret);
+            if (recovered is not null)
+            {
+                TryRestorePrimary(path, recovered.Value.Json, recovered.Value.Seal);
+                LastSealVerdict = SettingsSealVerdict.Tampered;
+                RecoveryRestored = true;
+                LastLoadFault = $"settings.json could not be read ({ex.Message}). The unreadable primary was " +
+                                $"quarantined as {Path.GetFileName(quarantine)} and the sealed last-known-good " +
+                                "settings were restored.";
+                return recovered.Value.Settings;
+            }
+            if (SafeHasPriorSealEvidence())
+                LastSealVerdict = SettingsSealVerdict.Tampered;
             LastLoadFault = quarantine is not null
                 ? $"settings.json could not be read ({ex.Message}). It was moved to {Path.GetFileName(quarantine)} " +
                   "and defaults were loaded — re-apply your settings, or restore from the .bad file."
@@ -184,7 +237,8 @@ public sealed class SettingsStore
             var json = File.ReadAllText(RecoveryPath(path));
             var seal = File.ReadAllText(RecoverySealPath(path)).Trim();
             var settings = Deserialize(json);
-            return Verify(settings, seal, sealer, secret) == SettingsSealVerdict.Sealed
+            var verdict = Verify(settings, seal, sealer, secret);
+            return verdict is SettingsSealVerdict.Sealed or SettingsSealVerdict.LegacySealed
                 ? (settings, json, seal)
                 : null;
         }
@@ -212,6 +266,26 @@ public sealed class SettingsStore
             var newSeal = SettingsSeal.Compute(settings, newSecret);
             WriteAtomically(SealPath(path), newSeal);
             TryWriteRecovery(path, currentJson, newSeal);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private static bool TryUpgradeSeal(
+        string path,
+        string json,
+        ForemanSettings settings,
+        ISettingsSealer? sealer,
+        string? secret)
+    {
+        try
+        {
+            var upgraded = sealer is not null
+                ? sealer.Compute(settings)
+                : !string.IsNullOrEmpty(secret) ? SettingsSeal.Compute(settings, secret) : null;
+            if (string.IsNullOrEmpty(upgraded)) return false;
+            WriteAtomically(SealPath(path), upgraded);
+            TryWriteRecovery(path, json, upgraded);
             return true;
         }
         catch { return false; }

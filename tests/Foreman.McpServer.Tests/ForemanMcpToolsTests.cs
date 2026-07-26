@@ -229,7 +229,8 @@ public sealed class ForemanMcpToolsTests : IDisposable
         {
             _state.AddEvent(new CommandAlertEvent(
                 DateTimeOffset.UtcNow.AddMilliseconds(i), ForemanSeverity.Critical,
-                "MCP.ReportSuspiciousCommand", $"fabricated {i}", "rm -rf /", "del-001", "delete", "test", "none", 0));
+                "MCP.ReportSuspiciousCommand", $"fabricated {i}", "rm -rf /", "del-001", "delete", "test", "none", 0)
+                { Origin = EventOrigin.Agent });
         }
 
         var hostHigh = new MonitoringNoticeEvent(

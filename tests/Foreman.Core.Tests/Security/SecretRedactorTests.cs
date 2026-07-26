@@ -71,6 +71,24 @@ public sealed class SecretRedactorTests
         Assert.Contains("https://user:" + Mask + "@github.com/x", r);
     }
 
+    [Theory]
+    [InlineData("charge 4242 4242 4242 4242 now")]
+    [InlineData("PAN=4111111111111111")]
+    public void LuhnValidPaymentCardNumbers_AreMasked(string input)
+    {
+        var redacted = SecretRedactor.Redact(input);
+        Assert.Contains(Mask, redacted);
+        Assert.DoesNotContain("4242 4242 4242 4242", redacted);
+        Assert.DoesNotContain("4111111111111111", redacted);
+    }
+
+    [Fact]
+    public void NonLuhnLongNumber_IsNotMaskedWithoutCardLabel()
+    {
+        const string value = "1234567890123456";
+        Assert.Equal(value, SecretRedactor.Redact(value));
+    }
+
     // ── Must NOT mask (no over-redaction) ──────────────────────────────────────
     [Theory]
     [InlineData("rm -rf /tmp/build")]

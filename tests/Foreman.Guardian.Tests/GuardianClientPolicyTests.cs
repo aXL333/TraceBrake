@@ -53,6 +53,28 @@ public sealed class GuardianClientPolicyTests
             "legacy_allow_all", ForemanPath, null, null, ForemanPath, null, null).Trusted);
 
     [Fact]
+    public void PublisherPolicy_CannotBeDowngradedToPathHashMode()
+    {
+        var existing = new GuardianClientPolicy
+        {
+            Mode = GuardianClientPolicy.PublisherSignedMode,
+            PublisherThumbprint = "AABB",
+            ForemanPath = ForemanPath,
+        };
+        var replacement = new GuardianClientPolicy
+        {
+            Mode = GuardianClientPolicy.PathHashPinnedMode,
+            Sha256 = "0011",
+            ForemanPath = ForemanPath,
+        };
+
+        var result = GuardianClientPolicy.CanReplace(existing, replacement);
+
+        Assert.False(result.Allowed);
+        Assert.Contains("cannot be downgraded", result.Reason);
+    }
+
+    [Fact]
     public void FailedInstallPolicyReplacement_CanRestoreExactPriorBytes()
     {
         var dir = Path.Combine(Path.GetTempPath(), "guardian-policy-" + Guid.NewGuid().ToString("N"));

@@ -8,7 +8,6 @@ using Foreman.Guardian;
 //   --version                      print version and exit
 //   --service                      run under the Service Control Manager (LocalSystem) — how it runs in production
 //   --install --foreman-pid <pid>  ELEVATED self-install: resolve live Foreman, integrity-gate, install + start
-//     [--allow-unsigned-development] explicit unsafe-development opt-in; never supplied by Release App builds
 //   --uninstall                    ELEVATED: stop + delete the service, remove its dirs
 //   (no verb)                      console host for smoke tests (same authority + authenticated pipe)
 
@@ -27,7 +26,6 @@ if (Has("--service"))
 if (Has("--install"))
     return GuardianInstaller.Install(
         ArgInt("--foreman-pid"),
-        allowUnsignedDevelopment: Has("--allow-unsigned-development"),
         Console.WriteLine);
 
 if (Has("--uninstall"))

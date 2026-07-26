@@ -58,7 +58,7 @@ static int Run(string[] args)
             var paths = File.ReadAllLines(decoyFile)
                 .Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
             decoyAudit = new DecoyAudit(paths, [parentPid, Environment.ProcessId]);
-            decoyAudit.Start();   // sets SACLs + auditpol; degrades to no-op on failure
+            _ = decoyAudit.Start();   // armed count is reported after handshake, including partial/failed arming
         }
 
         if (capture is null && decoyAudit is null && !wakeRequests) return 6;   // nothing to do
@@ -70,6 +70,13 @@ static int Run(string[] args)
         using var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
         try { writer.WriteLine(nonce); }   // handshake
         catch { return 5; }
+
+        if (decoyAudit is not null && !TryWrite(writer, new DecoyAuditStatusMessage
+        {
+            TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ExpectedCount = decoyAudit.ExpectedCount,
+            ArmedCount = decoyAudit.ArmedCount,
+        })) return 5;
 
         var parent = SafeGetProcess(parentPid);
         var clock = Stopwatch.StartNew();

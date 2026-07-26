@@ -5,6 +5,7 @@ public static class SidecarFrame
 {
     public const string Net = "net";
     public const string DecoyRead = "decoyRead";
+    public const string DecoyAuditStatus = "decoyAuditStatus";
     public const string WakeRequests = "wakeRequests";
 }
 
@@ -42,6 +43,16 @@ public sealed class DecoyReadMessage
 
     /// <summary>The reading process's image path (from the audit event), if available.</summary>
     public string Image { get; set; } = string.Empty;
+    /// <summary>"read", "modified", or "deleted".</summary>
+    public string Operation { get; set; } = "read";
+}
+
+public sealed class DecoyAuditStatusMessage
+{
+    public string Kind { get; set; } = SidecarFrame.DecoyAuditStatus;
+    public long TimestampUnixMs { get; set; }
+    public int ExpectedCount { get; set; }
+    public int ArmedCount { get; set; }
 }
 
 /// <summary>One frame from the elevated sidecar: current process power/wake requests.</summary>

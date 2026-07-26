@@ -74,6 +74,21 @@ public sealed class AuditorTests
     }
 
     [Fact]
+    public void FastPath_PaymentCardReference_HoldsRegardlessOfVerb()
+    {
+        var action = new CuAction(CuModality.Browser, "click", new Dictionary<string, string>
+        {
+            ["selector"] = "#pay",
+            ["payload"] = "{{vault:shop.example/abc12345/cardnumber}}",
+        });
+
+        var verdict = FastPathAuditor.Judge(action, new CuContext());
+
+        Assert.Equal(CuDecision.Hold, verdict.Decision);
+        Assert.True(verdict.Final);
+    }
+
+    [Fact]
     public void Project_IncludesUrlAndTypedText()
     {
         var a = new CuAction(CuModality.Browser, "type",

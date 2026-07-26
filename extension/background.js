@@ -16,6 +16,7 @@
  */
 import { loadSettings, saveSettings, onSettingsChanged } from './settings.js';
 import { callMcpTool, openMcpSession } from './mcp-client.js';
+import { vaultTokenRe, vaultRefs, buildVaultFillPolicy } from './vault-policy.mjs';
 
 let cfg = { host: '127.0.0.1', port: 54321, token: '', pairedOrigin: '', harnessId: 'browser-extension' };
 let connected = false;
@@ -206,51 +207,17 @@ async function resolveTargetTab(args) {
 // chrome.permissions.contains for the TARGET TAB'S REAL origin (from chrome.tabs.get, never from agent args), so
 // the agent can never make us touch a site the operator didn't allow in the "Browser fill access" panel.
 
-// Match the App's VaultReference grammar exactly: {{vault:<origin>/<field>}}. A fresh /g instance per call (no
-// shared lastIndex state). Field/origin shapes mirror Foreman.Core.Vault.VaultReference so we extract the same
-// whole tokens the server binds against.
-const vaultTokenRe = () => /\{\{vault:([A-Za-z0-9.\-]+(?::\d+)?)\/(?:([A-Za-z0-9_-]{6,64})\/)?([A-Za-z]+)\}\}/g;
-
-function vaultRefs(value) {
-    const refs = [];
-    const seen = new Set();
-    for (const m of String(value).matchAll(vaultTokenRe())) {
-        if (seen.has(m[0])) continue;
-        seen.add(m[0]);
-        refs.push({ token: m[0], entryId: m[2] || null, field: String(m[3] || '').toLowerCase() });
-    }
-    return refs;
-}
-
-function needsPasswordField(refs) {
-    // /signup returns a freshly generated password, so it gets the same page-side guard as /password.
-    return refs.some((r) => r.field === 'password' || r.field === 'signup');
-}
-
-function paymentAutocomplete(refs) {
-    const names = {
-        cardholdername: 'cc-name',
-        cardnumber: 'cc-number',
-        cardexpirymonth: 'cc-exp-month',
-        cardexpiryyear: 'cc-exp-year',
-        cardsecuritycode: 'cc-csc',
-        billingaddress: 'billing street-address|street-address|billing address-line1|address-line1',
-    };
-    const hits = refs.map((r) => names[r.field]).filter(Boolean);
-    return hits.length === 1 && refs.length === 1 ? hits[0] : (hits.length > 0 ? '__invalid__' : null);
-}
-
 // Resolve every {{vault:...}} token in `value` to its real secret via cu_resolve_vault, bound to this action and
 // the live tab host. All-or-nothing and fail-closed: if ANY token won't resolve, nothing is filled and the error
 // carries NO secret. The resolved values exist only in the returned string (typed into the page, then dropped) —
 // they are never logged, never put in cu_complete_action, never returned to the submitting agent.
-async function resolveVaultTokens(actionId, value, liveOrigin, refs = vaultRefs(value)) {
+async function resolveVaultTokens(actionId, value, liveOrigin, argumentKey, refs = vaultRefs(value)) {
     const tokens = refs.map((r) => r.token);
     if (tokens.length === 0) return { ok: true, value };          // plain text — no vault round-trip
     if (!actionId) return { ok: false, error: 'Vault reference present but the action has no id to bind to.' };
     const map = new Map();
     for (const tok of tokens) {
-        const r = await mcpCall('cu_resolve_vault', { actionId, reference: tok, liveOrigin });
+        const r = await mcpCall('cu_resolve_vault', { actionId, reference: tok, liveOrigin, argumentKey });
         if (!r || r.ok !== true || typeof r.value !== 'string')
             return { ok: false, error: (r && r.reason) || 'A vault reference could not be resolved.' };
         map.set(tok, r.value);
@@ -462,15 +429,11 @@ async function executeCuAction(act) {
             const tab = await chrome.tabs.get(tabId).catch(() => null);
             const gate = await fillGate(tab);
             if (!gate.ok) return gate;
-            const rawValue = String(args.value ?? args.text ?? '');
+            const argumentKey = args.value !== undefined ? 'value' : 'text';
+            const rawValue = String(args[argumentKey] ?? '');
             const refs = vaultRefs(rawValue);
             const selector = typeof args.selector === 'string' && args.selector.trim() ? args.selector.trim() : null;
-            const fillPolicy = refs.length > 0 ? {
-                requireSelector: true,
-                requirePasswordField: needsPasswordField(refs),
-                requiredAutocomplete: paymentAutocomplete(refs),
-                expectedOrigin: gate.origin,
-            } : {};
+            const fillPolicy = buildVaultFillPolicy(refs, gate.origin);
             if (refs.length > 0) {
                 const [pre] = await chrome.scripting.executeScript({
                     target: { tabId },
@@ -482,7 +445,7 @@ async function executeCuAction(act) {
                     return { ok: false, error: (checked && checked.error) || 'Vault fill target could not be verified.' };
             }
             // Resolve {{vault:...}} at the last moment, bound to this action + the live host (all-or-nothing).
-            const resolved = await resolveVaultTokens(act.actionId, rawValue, gate.host, refs);
+            const resolved = await resolveVaultTokens(act.actionId, rawValue, gate.host, argumentKey, refs);
             if (!resolved.ok) return { ok: false, error: resolved.error };   // carries no secret
             let value = resolved.value;
             let res;

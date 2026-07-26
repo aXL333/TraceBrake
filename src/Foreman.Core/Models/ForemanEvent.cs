@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace Foreman.Core.Models;
 
+public enum EventOrigin
+{
+    Host = 0,
+    Agent = 1,
+}
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(CommandAlertEvent),       "command")]
 [JsonDerivedType(typeof(HangDetectedEvent),       "hang")]
@@ -21,6 +27,8 @@ public abstract record ForemanEvent(
 {
     public string Id { get; init; } = Guid.NewGuid().ToString("N")[..12];
     public bool Acknowledged { get; set; }
+    /// <summary>Publisher-assigned provenance. Never infer this from Source or other attacker-controlled text.</summary>
+    public EventOrigin Origin { get; init; } = EventOrigin.Host;
 
     /// <summary>
     /// Set by the alert lifecycle (<see cref="Foreman.Core.Alerts.AlertResolver"/>) when the underlying

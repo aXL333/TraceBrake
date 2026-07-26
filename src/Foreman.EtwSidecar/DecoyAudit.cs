@@ -31,6 +31,7 @@ internal sealed class DecoyAudit : IDisposable
     private readonly string[] _decoyPaths;
     private readonly int[] _excludedPids;
     private readonly ConcurrentQueue<DecoyReadMessage> _hits = new();
+    private readonly DecoyAuditEventCorrelator _correlator;
     private readonly List<string> _sacled = [];
     private EventLogWatcher? _watcher;
     private bool _weEnabledAuditPol;
@@ -40,9 +41,14 @@ internal sealed class DecoyAudit : IDisposable
 
     public DecoyAudit(IEnumerable<string> decoyPaths, IEnumerable<int> excludedPids)
     {
-        _decoyPaths = decoyPaths.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
+        _decoyPaths = decoyPaths.Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         _excludedPids = excludedPids.ToArray();
+        _correlator = new DecoyAuditEventCorrelator(_decoyPaths, _excludedPids);
     }
+
+    public int ExpectedCount => _decoyPaths.Length;
+    public int ArmedCount => _sacled.Count;
 
     public bool Start()
     {
@@ -80,7 +86,7 @@ internal sealed class DecoyAudit : IDisposable
 
     private void StartWatcher()
     {
-        var query = new EventLogQuery("Security", PathType.LogName, "*[System[(EventID=4663)]]");
+        var query = new EventLogQuery("Security", PathType.LogName, "*[System[(EventID=4663 or EventID=4660)]]");
         _watcher = new EventLogWatcher(query);
         _watcher.EventRecordWritten += OnEvent;
         _watcher.Enabled = true;
@@ -91,28 +97,24 @@ internal sealed class DecoyAudit : IDisposable
         if (e.EventRecord is null) return;
         try
         {
-            var (objectName, pid, image) = ParseAccessEvent(e.EventRecord.ToXml());
-            if (pid == 0) return;
-            if (!DecoyAuditPolicy.IsDecoyRead(objectName, pid, image, _decoyPaths, _excludedPids)) return;
-            _hits.Enqueue(new DecoyReadMessage
-            {
-                TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                Path = objectName ?? string.Empty,
-                Pid = pid,
-                Image = image ?? string.Empty,
-            });
+            var parsed = ParseAccessEvent(e.EventRecord.ToXml());
+            foreach (var hit in _correlator.Process(parsed))
+                _hits.Enqueue(hit);
         }
         catch { /* one bad event — ignore */ }
         finally { try { e.EventRecord.Dispose(); } catch { } }
     }
 
     // 4663 EventData carries ObjectName, ProcessId (hex), ProcessName (accessing image).
-    private static (string? objectName, int pid, string? image) ParseAccessEvent(string xml)
+    private static DecoyAuditAccessEvent ParseAccessEvent(string xml)
     {
         var doc = XDocument.Parse(xml);
         XNamespace ns = doc.Root!.Name.Namespace;
-        string? obj = null, image = null;
+        string? obj = null, image = null, handle = null;
         var pid = 0;
+        var eventId = int.TryParse(doc.Descendants(ns + "EventID").FirstOrDefault()?.Value, out var parsedId)
+            ? parsedId : 0;
+        uint accessMask = 0;
         foreach (var d in doc.Descendants(ns + "Data"))
         {
             switch ((string?)d.Attribute("Name"))
@@ -120,9 +122,19 @@ internal sealed class DecoyAudit : IDisposable
                 case "ObjectName":  obj = d.Value; break;
                 case "ProcessName": image = d.Value; break;
                 case "ProcessId":   pid = ParsePid(d.Value); break;
+                case "HandleId":    handle = d.Value.Trim(); break;
+                case "AccessMask":  accessMask = ParseMask(d.Value); break;
             }
         }
-        return (obj, pid, image);
+        return new DecoyAuditAccessEvent(eventId, obj, pid, image, handle, accessMask);
+    }
+
+    private static uint ParseMask(string value)
+    {
+        value = value.Trim();
+        return value.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? uint.TryParse(value[2..], System.Globalization.NumberStyles.HexNumber, null, out var hex) ? hex : 0
+            : uint.TryParse(value, out var number) ? number : 0;
     }
 
     private static int ParsePid(string v)
@@ -154,13 +166,15 @@ internal sealed class DecoyAudit : IDisposable
             var sec = fi.GetAccessControl(AccessControlSections.Audit);
             var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
 
+            const FileSystemRights auditedRights =
+                FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.Delete;
             foreach (FileSystemAuditRule r in sec.GetAuditRules(true, true, typeof(SecurityIdentifier)))
                 if (Equals(r.IdentityReference, everyone)
-                    && r.FileSystemRights == FileSystemRights.ReadData
+                    && r.FileSystemRights == auditedRights
                     && r.AuditFlags == AuditFlags.Success)
                     return true;   // our exact ACE already present (crash-orphaned) — adopt: watch it, remove on teardown
 
-            sec.AddAuditRule(new FileSystemAuditRule(everyone, FileSystemRights.ReadData, AuditFlags.Success));
+            sec.AddAuditRule(new FileSystemAuditRule(everyone, auditedRights, AuditFlags.Success));
             fi.SetAccessControl(sec);
             return true;
         }
@@ -179,7 +193,8 @@ internal sealed class DecoyAudit : IDisposable
             var sec = fi.GetAccessControl(AccessControlSections.Audit);
             sec.RemoveAuditRuleSpecific(new FileSystemAuditRule(
                 new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-                FileSystemRights.ReadData, AuditFlags.Success));
+                FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.Delete,
+                AuditFlags.Success));
             fi.SetAccessControl(sec);
         }
         catch { }

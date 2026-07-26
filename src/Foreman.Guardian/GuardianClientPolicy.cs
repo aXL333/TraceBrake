@@ -30,6 +30,20 @@ public sealed class GuardianClientPolicy
     public bool PublisherAuthenticated =>
         string.Equals(Mode, PublisherSignedMode, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Refuse a policy replacement that weakens a previously publisher-authenticated installation.
+    /// The decision depends only on administrator-owned policy state and verified replacement evidence.
+    /// </summary>
+    public static (bool Allowed, string Reason) CanReplace(
+        GuardianClientPolicy existing,
+        GuardianClientPolicy replacement)
+    {
+        if (existing.PublisherAuthenticated && !replacement.PublisherAuthenticated)
+            return (false, "a publisher-authenticated client policy cannot be downgraded to path/hash trust.");
+
+        return (true, "replacement does not weaken the installed client-policy trust mode.");
+    }
+
     public static GuardianClientPolicy CreateForInstall(string? foremanPath)
     {
         if (string.IsNullOrWhiteSpace(foremanPath))

@@ -39,6 +39,55 @@ function Expect-ValidatorRejection([string] $Name, [string] $MessagePattern) {
     Write-Host "Release payload bypass rejected: $Name."
 }
 
+# Whole-tree purity: no root DLL, unknown directory, hidden root file, or undeclared extension file may be
+# laundered through signing and attestation.
+$rootDll = Join-Path $root 'version.dll'
+Assert-UnderPayload $rootDll
+try {
+    Copy-Item -LiteralPath (Join-Path $root 'extensions\foreman\manifest.json') -Destination $rootDll
+    Expect-ValidatorRejection 'root version.dll' 'root purity'
+} finally {
+    if (Test-Path -LiteralPath $rootDll) {
+        Remove-Item -LiteralPath $rootDll -Force
+    }
+}
+
+$unknownDirectory = Join-Path $root 'amd64'
+Assert-UnderPayload $unknownDirectory
+try {
+    New-Item -ItemType Directory -Path $unknownDirectory -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $root 'extensions\foreman\manifest.json') `
+        -Destination (Join-Path $unknownDirectory 'x.dll')
+    Expect-ValidatorRejection 'unknown root directory' 'directory purity'
+} finally {
+    if (Test-Path -LiteralPath $unknownDirectory) {
+        Remove-Item -LiteralPath $unknownDirectory -Recurse -Force
+    }
+}
+
+$hiddenRoot = Join-Path $root '.foreman-hidden-root'
+Assert-UnderPayload $hiddenRoot
+try {
+    Copy-Item -LiteralPath (Join-Path $root 'extensions\foreman\manifest.json') -Destination $hiddenRoot
+    (Get-Item -LiteralPath $hiddenRoot -Force).Attributes = [IO.FileAttributes]::Hidden
+    Expect-ValidatorRejection 'hidden root file' 'root purity'
+} finally {
+    if (Test-Path -LiteralPath $hiddenRoot) {
+        Remove-Item -LiteralPath $hiddenRoot -Force
+    }
+}
+
+$extraExtensionFile = Join-Path $root 'extensions\foreman\undeclared.js'
+Assert-UnderPayload $extraExtensionFile
+try {
+    Copy-Item -LiteralPath (Join-Path $root 'extensions\foreman\background.js') -Destination $extraExtensionFile
+    Expect-ValidatorRejection 'undeclared extension file' 'differs from its manifest'
+} finally {
+    if (Test-Path -LiteralPath $extraExtensionFile) {
+        Remove-Item -LiteralPath $extraExtensionFile -Force
+    }
+}
+
 # Round-two sibling bypass: -Force must expose a hidden neighbouring file in every helper directory, not only
 # the originally reported ETW sidecar directory.
 $hiddenSibling = Join-Path $root 'cu-pilot\.foreman-hidden-sibling.dll'
@@ -46,7 +95,7 @@ Assert-UnderPayload $hiddenSibling
 try {
     Copy-Item -LiteralPath (Join-Path $root 'extensions\foreman\manifest.json') -Destination $hiddenSibling
     (Get-Item -LiteralPath $hiddenSibling -Force).Attributes = [IO.FileAttributes]::Hidden
-    Expect-ValidatorRejection 'hidden CU Pilot sibling' 'hidden-sibling'
+    Expect-ValidatorRejection 'hidden CU Pilot sibling' 'differs from its manifest'
 } finally {
     if (Test-Path -LiteralPath $hiddenSibling) {
         Remove-Item -LiteralPath $hiddenSibling -Force
@@ -60,7 +109,7 @@ try {
     New-Item -ItemType Directory -Path $packagedTests -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $root 'extensions\liveweave\manifest.json') `
         -Destination (Join-Path $packagedTests 'fixture.json')
-    Expect-ValidatorRejection 'packaged extension tests' 'test directories'
+    Expect-ValidatorRejection 'packaged extension tests' 'differs from its manifest'
 } finally {
     if (Test-Path -LiteralPath $packagedTests) {
         Remove-Item -LiteralPath $packagedTests -Recurse -Force

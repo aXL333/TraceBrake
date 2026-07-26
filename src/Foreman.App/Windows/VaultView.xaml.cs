@@ -352,9 +352,9 @@ public partial class VaultView : UserControl
 
         if (name.Length == 0) { CardError.Text = "Enter a nickname for this card."; return; }
         if (origins.Count == 0) { CardError.Text = "Enter at least one checkout website."; return; }
-        if (_editingOriginalName is null && (number.Length is < 12 or > 19 || !PassesLuhn(number)))
+        if (_editingOriginalName is null && (number.Length is < 12 or > 19 || !Foreman.Core.Security.PaymentCardDetection.PassesLuhn(number)))
         { CardError.Text = "Enter a valid card number (12–19 digits)."; return; }
-        if (number.Length > 0 && (number.Length is < 12 or > 19 || !PassesLuhn(number)))
+        if (number.Length > 0 && (number.Length is < 12 or > 19 || !Foreman.Core.Security.PaymentCardDetection.PassesLuhn(number)))
         { CardError.Text = "The replacement card number is invalid."; return; }
         if (!int.TryParse(month, out var mm) || mm is < 1 or > 12)
         { CardError.Text = "Expiry month must be between 01 and 12."; return; }
@@ -415,20 +415,6 @@ public partial class VaultView : UserControl
 
     private static string Digits(string? value) =>
         new((value ?? string.Empty).Where(char.IsAsciiDigit).ToArray());
-
-    private static bool PassesLuhn(string digits)
-    {
-        var sum = 0;
-        var alternate = false;
-        for (var i = digits.Length - 1; i >= 0; i--)
-        {
-            var n = digits[i] - '0';
-            if (alternate && (n *= 2) > 9) n -= 9;
-            sum += n;
-            alternate = !alternate;
-        }
-        return digits.Length > 0 && sum % 10 == 0;
-    }
 
     private static List<string> SplitCsv(string? s) =>
         (s ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();

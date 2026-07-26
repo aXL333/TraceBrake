@@ -64,6 +64,17 @@ public sealed class CuBrokerTests
         Assert.Empty(b.Claim(10));
     }
 
+    [Theory]
+    [InlineData("frobnicate")]
+    [InlineData("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")]
+    public async Task BrowserUnknownOrOverlengthVerb_IsStructurallyBlocked(string verb)
+    {
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")));
+        var item = await b.SubmitAsync(Act(verb), new CuContext());
+        Assert.Equal(CuActionState.Blocked, item.State);
+        Assert.Contains("unsupported browser verb", item.Verdict!.Reason);
+    }
+
     [Fact]
     public async Task ApproveHeld_OnNonHeld_Fails()
     {

@@ -39,6 +39,8 @@ public sealed record SetupHealthSnapshot
     public int DecoysPlanted { get; init; }
     public bool ReadAuditingEnabled { get; init; }
     public bool SidecarConnected { get; init; }
+    public int DecoyAuditExpected { get; init; }
+    public int DecoyAuditArmed { get; init; }
 
     // Hardening / blackbox
     public bool GuardianInstalled { get; init; }
@@ -117,6 +119,12 @@ public static class SetupHealth
             items.Add(new("Decoy credentials", SetupHealthStatus.Attention,
                 "Enabled but ZERO decoys are tracked — the tripwire is armed on paper only.",
                 "Re-apply the decoy plant from Settings (existing Foreman decoys on disk are adopted)."));
+        else if (s.ReadAuditingEnabled &&
+                 (s.DecoyAuditExpected <= 0 || s.DecoyAuditArmed < s.DecoyAuditExpected))
+            items.Add(new("Decoy credentials", SetupHealthStatus.Attention,
+                $"{s.DecoysPlanted} decoy(s) are tracked, but only {s.DecoyAuditArmed} of " +
+                $"{Math.Max(s.DecoyAuditExpected, s.DecoysPlanted)} expected tripwire(s) are armed.",
+                "Re-apply decoy auditing and review the High monitoring notice."));
         else
             items.Add(new("Decoy credentials", SetupHealthStatus.Ok, $"{s.DecoysPlanted} decoy(s) planted and tracked."));
 
@@ -125,12 +133,14 @@ public static class SetupHealth
         // actually flow — Group Policy / Advanced Audit Policy can override `auditpol` so the SACL is set but no
         // event fires. In-process Foreman can't see that; only a live read test can. So don't claim "working".
         if (s.DecoysEnabled && s.ReadAuditingEnabled)
-            items.Add(s.SidecarConnected
+            items.Add(s.SidecarConnected && s.DecoyAuditExpected > 0 &&
+                      s.DecoyAuditArmed == s.DecoyAuditExpected
                 ? new("Decoy read-auditing", SetupHealthStatus.Ok,
                     "Elevated sidecar connected — direct reads of bait decoys should alert. If a known decoy read does NOT alert, " +
                     "the OS audit policy may be overridden (Group Policy); run the decoy self-test to confirm 4663 events actually flow.")
                 : new("Decoy read-auditing", SetupHealthStatus.Attention,
-                    "Enabled, but the elevated sidecar is not connected — no read tripwire is actually live.",
+                    $"Enabled, but only {s.DecoyAuditArmed} of {Math.Max(s.DecoyAuditExpected, s.DecoysPlanted)} expected " +
+                    "tripwire(s) are armed; connectivity alone is not treated as coverage.",
                     "Re-apply in Settings and accept the UAC prompt (and check nothing tracked is planted: see the decoys row)."));
         else if (s.DecoysEnabled)
             items.Add(new("Decoy read-auditing", SetupHealthStatus.Off,

@@ -14,6 +14,7 @@ public sealed class SetupHealthTests
         PresenceEnrolled = true,
         VaultEnrolled = true, VaultUnlocked = true,
         DecoysEnabled = true, DecoysPlanted = 14, ReadAuditingEnabled = true, SidecarConnected = true,
+        DecoyAuditExpected = 14, DecoyAuditArmed = 14,
         GuardianInstalled = true, GuardianTrustMode = "publisher_signed", OsEventLogAvailable = true,
     };
 
@@ -52,6 +53,21 @@ public sealed class SetupHealthTests
     {
         var row = Row(SetupHealth.Evaluate(Healthy() with { SidecarConnected = false }), "Decoy read-auditing");
         Assert.Equal(SetupHealthStatus.Attention, row.Status);
+    }
+
+    [Fact]
+    public void ConnectedSidecarWithMissingDecoyCoverage_FlagsBothRows()
+    {
+        var items = SetupHealth.Evaluate(Healthy() with
+        {
+            DecoysPlanted = 3,
+            SidecarConnected = true,
+            DecoyAuditExpected = 3,
+            DecoyAuditArmed = 2,
+        });
+
+        Assert.Equal(SetupHealthStatus.Attention, Row(items, "Decoy credentials").Status);
+        Assert.Equal(SetupHealthStatus.Attention, Row(items, "Decoy read-auditing").Status);
     }
 
     [Fact]

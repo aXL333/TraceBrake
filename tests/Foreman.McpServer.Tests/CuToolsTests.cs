@@ -341,6 +341,14 @@ public sealed class CuToolsTests
         return actionId;
     }
 
+    private static async Task<string> ExecutingBrowserActionArgs(string argsJson)
+    {
+        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "type", argsJson));
+        var actionId = sub.RootElement.GetProperty("actionId").GetString()!;
+        Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension"))).Dispose();
+        return actionId;
+    }
+
     [Fact]
     public async Task CuResolveVault_Executor_ResolvesBoundReference()
     {
@@ -349,7 +357,7 @@ public sealed class CuToolsTests
         var actionId = await ExecutingBrowserAction("login {{vault:github.com/password}}");
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension")));
+            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension"), "text"));
         Assert.True(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("s3cret", res.RootElement.GetProperty("value").GetString());
     }
@@ -362,7 +370,7 @@ public sealed class CuToolsTests
         var actionId = await ExecutingBrowserAction("x {{vault:example.com/signup}}");   // token smuggled inside other text
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension")));
+            actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
     }
 
@@ -374,7 +382,7 @@ public sealed class CuToolsTests
         var actionId = await ExecutingBrowserAction("{{vault:example.com/signup}}");
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension")));
+            actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension"), "text"));
         Assert.True(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("generated-pw", res.RootElement.GetProperty("value").GetString());
     }
@@ -393,7 +401,28 @@ public sealed class CuToolsTests
         var actionId = await ExecutingBrowserAction("prefix " + token);
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, token, "shop.example", AsHarness("browser-extension")));
+            actionId, token, "shop.example", AsHarness("browser-extension"), "text"));
+
+        Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
+        Assert.False(resolverCalled);
+    }
+
+    [Fact]
+    public async Task CuResolveVault_WholeValueDecoyInDifferentArgument_CannotBlessEmbeddedCard()
+    {
+        var state = StateWith(CuVerdict.Allow("test"));
+        var resolverCalled = false;
+        state.ResolveVaultAsync = (_, _, _) =>
+        {
+            resolverCalled = true;
+            return Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "should-not-reach", "ok", false));
+        };
+        const string token = "{{vault:shop.example/personal01/cardnumber}}";
+        var actionId = await ExecutingBrowserActionArgs(
+            $"{{\"value\":\"prefix {token}\",\"x\":\"{token}\"}}");
+
+        using var res = Json(await ForemanMcpTools.CuResolveVault(
+            actionId, token, "shop.example", AsHarness("browser-extension"), "value"));
 
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.False(resolverCalled);
@@ -408,7 +437,7 @@ public sealed class CuToolsTests
 
         // A driving/submitting harness (not the browser-extension executor) can never resolve.
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("codex")));
+            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("codex"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
     }
 
@@ -421,7 +450,7 @@ public sealed class CuToolsTests
 
         // A reference the agent never put in the approved action is refused — no resolving arbitrary credentials.
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:bank.com/password}}", "bank.com", AsHarness("browser-extension")));
+            actionId, "{{vault:bank.com/password}}", "bank.com", AsHarness("browser-extension"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
     }
 
@@ -433,7 +462,7 @@ public sealed class CuToolsTests
         state.Panic = new Foreman.Core.Security.CuPanicState();
         state.Panic.Halt();
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            "any", "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension")));
+            "any", "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());   // panic voids any credential release
     }
 
@@ -444,7 +473,7 @@ public sealed class CuToolsTests
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "s3cret", "ok", false));
         var actionId = await ExecutingBrowserAction("login {{vault:github.com/Password}}");   // capital P in the action
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension")));
+            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension"), "text"));
         Assert.True(res.RootElement.GetProperty("ok").GetBoolean());    // whole-token, case-insensitive match
     }
 
@@ -462,7 +491,7 @@ public sealed class CuToolsTests
         try
         {
             using var res = Json(await ForemanMcpTools.CuResolveVault(
-                actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension")));
+                actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension"), "text"));
             Assert.True(res.RootElement.GetProperty("ok").GetBoolean());
         }
         finally { EventBus.Instance.Unsubscribe(Handler); }

@@ -97,6 +97,19 @@ public partial class App : Application
         }
 #endif
 
+        var releaseIntegrity = ReleasePayloadIntegrity.Verify(AppContext.BaseDirectory);
+        if (releaseIntegrity.Applicable && !releaseIntegrity.Trusted)
+        {
+            MessageBox.Show(
+                "Foreman refused to start because its installed release payload no longer matches the signed build " +
+                $"manifest.\n\n{releaseIntegrity.Reason}\n\nReinstall Foreman from a verified release.",
+                "Foreman Agent Safety - integrity check failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
+
         // Track ownership explicitly: the second instance must NOT call ReleaseMutex in
         // OnExit (releasing an unowned mutex throws and crashed the duplicate on exit).
         _singleInstance = new Mutex(initiallyOwned: true, "ForemanSingleInstanceMutex", out _ownsSingleInstance);
@@ -180,6 +193,25 @@ public partial class App : Application
         SettingsStore.Sealer = GuardianSettingsSealer.TryCreate(() => installSecret);
 
         var settings = SettingsStore.Load();
+        if (SettingsStore.LastSealVerdict == SettingsSealVerdict.Tampered &&
+            !SettingsStore.RecoveryRestored)
+        {
+            _osLog.Write(
+                OsEventIds.SecuritySignificant,
+                OsEventCategory.Security,
+                ForemanSeverity.Critical,
+                SettingsStore.LastLoadFault ??
+                "Foreman refused to initialise because sealed settings could not be recovered.");
+            MessageBox.Show(
+                "Foreman refused to initialise because its sealed settings were missing or invalid and no verified " +
+                "last-known-good snapshot was available.\n\nReinstall or restore the settings backup, then start " +
+                "Foreman again. No agent-facing subsystem was started.",
+                "Foreman Agent Safety - settings recovery required",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
         _cts = new CancellationTokenSource();
 
         // Honour the operator's opt-out for the direct lifecycle/crash writes from here on (start/stop/crash).
@@ -810,6 +842,24 @@ public partial class App : Application
             SettingsStore.Save(settings);
         };
 
+        // Revalidate tracked coverage at startup, before configuring the elevated auditor. A missing or replaced
+        // bait file is itself a High-signal coverage change and must never be silently retired.
+        if (settings.DecoyCredentials.Enabled && settings.DecoyCredentials.PlantedPaths.Count > 0)
+        {
+            var decoyManager = new DecoyCredentialManager(new SystemDecoyFileSystem());
+            var revalidated = decoyManager.Revalidate(settings.DecoyCredentials.PlantedPaths);
+            if (revalidated.Reclaimed.Count > 0)
+            {
+                settings.DecoyCredentials.PlantedPaths = revalidated.StillDecoys.ToList();
+                SettingsStore.Save(settings);
+                EventBus.Instance.Publish(new MonitoringNoticeEvent(
+                    DateTimeOffset.UtcNow, ForemanSeverity.High, "Foreman.Decoys",
+                    $"Decoy tripwire coverage shrank at startup: {revalidated.Reclaimed.Count} tracked path(s) " +
+                    $"were missing or no longer contained Foreman's sentinel ({revalidated.Missing.Count} missing). " +
+                    "Those paths were retired from auditing; review the change and re-plant decoys if unexpected."));
+            }
+        }
+
         // Optional elevated, capture-only ETW network sidecar. Only this sidecar runs elevated;
         // the app stays at medium IL. Off unless the user opts in (Settings → Run elevated).
         _sidecar = new ElevatedSidecarController();
@@ -817,9 +867,10 @@ public partial class App : Application
         // excluded Foreman's own re-validation reads) is a Critical credential-theft incident.
         _sidecar.OnDecoyRead = d => EventBus.Instance.Publish(new CommandAlertEvent(
             DateTimeOffset.FromUnixTimeMilliseconds(d.TimestampUnixMs),
-            ForemanSeverity.Critical,
+            string.Equals(d.Operation, "read", StringComparison.OrdinalIgnoreCase)
+                ? ForemanSeverity.Critical : ForemanSeverity.High,
             $"{(string.IsNullOrWhiteSpace(d.Image) ? "process" : System.IO.Path.GetFileName(d.Image))} (pid {d.Pid})",
-            $"Decoy credential READ: {d.Path} was opened by " +
+            $"Decoy credential {d.Operation.ToUpperInvariant()}: {d.Path} was accessed by " +
             $"{(string.IsNullOrWhiteSpace(d.Image) ? "an unknown process" : d.Image)} (pid {d.Pid}). " +
             "Nothing legitimate reads a decoy you planted as bait.",
             d.Image, "cred-decoy-read", "Decoy credential read",
@@ -875,6 +926,8 @@ public partial class App : Application
                 DecoysPlanted        = dc.PlantedPaths.Count,
                 ReadAuditingEnabled  = dc.EnableReadAuditing,
                 SidecarConnected     = _sidecar?.IsConnected ?? false,
+                DecoyAuditExpected   = _sidecar?.DecoyAuditExpected ?? 0,
+                DecoyAuditArmed      = _sidecar?.DecoyAuditArmed ?? 0,
                 GuardianInstalled    = GuardianDiscovery.IsGuardianInstalled(),
                 GuardianTrustMode    = GuardianTrust.ProbeInstalledMode(),
                 OsEventLogAvailable  = _osLog.IsAvailable,

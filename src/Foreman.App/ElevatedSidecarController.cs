@@ -39,6 +39,8 @@ public sealed class ElevatedSidecarController : IDisposable
     private bool _captureWakeRequests = true;
     private IReadOnlyList<string> _decoyPaths = [];
     private string? _decoyPathsFile;
+    private int _decoyExpected;
+    private int _decoyArmed;
 
     /// <summary>
     /// Sets what the next launch does: per-PID network capture and/or SACL read-auditing of the given decoy
@@ -49,6 +51,8 @@ public sealed class ElevatedSidecarController : IDisposable
         _captureNet = captureNet;
         _captureWakeRequests = captureWakeRequests;
         _decoyPaths = decoyPaths ?? [];
+        _decoyExpected = _decoyPaths.Count;
+        _decoyArmed = 0;
     }
 
     /// <summary>Stop and start with the current configuration (re-prompts UAC if elevated).</summary>
@@ -56,6 +60,8 @@ public sealed class ElevatedSidecarController : IDisposable
 
     public bool IsRunning { get; private set; }
     public bool IsConnected => _connected;
+    public int DecoyAuditExpected => _decoyExpected;
+    public int DecoyAuditArmed => _decoyArmed;
 
     /// <summary>
     /// True when the most recent launch attempt failed to START — the user declined the UAC prompt, or the helper
@@ -149,7 +155,7 @@ public sealed class ElevatedSidecarController : IDisposable
             using var reader = new StreamReader(server, new UTF8Encoding(false));
 
             // Handshake: the first line must be our nonce, else it isn't the sidecar we launched.
-            var presented = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+            var presented = await reader.ReadLineAsync(connectionCts.Token).ConfigureAwait(false);
             if (!string.Equals(presented, nonce, StringComparison.Ordinal)) return;
 
             _connected = true;
@@ -191,6 +197,14 @@ public sealed class ElevatedSidecarController : IDisposable
         if (kind == SidecarFrame.DecoyRead)
         {
             if (JsonSerializer.Deserialize<DecoyReadMessage>(line) is { } d) OnDecoyRead?.Invoke(d);
+        }
+        else if (kind == SidecarFrame.DecoyAuditStatus)
+        {
+            if (JsonSerializer.Deserialize<DecoyAuditStatusMessage>(line) is { } status)
+            {
+                _decoyExpected = status.ExpectedCount;
+                _decoyArmed = status.ArmedCount;
+            }
         }
         else if (kind == SidecarFrame.WakeRequests)
         {

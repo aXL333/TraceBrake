@@ -9,7 +9,7 @@ on:
         description: 'Version to build (without leading v), e.g. 0.1.0'
         required: true
       publish_release:
-        description: 'Publish a GitHub Release (main only); leave off to build a private Actions candidate'
+        description: 'Publish from the selected annotated mainline v* tag; leave off for a private candidate'
         required: true
         type: boolean
         default: false
@@ -35,16 +35,23 @@ jobs:
       INNO_SETUP_VERSION: '6.7.1'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
 
-      - name: Refuse manual publishing outside main
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+      - name: Test release-source guard bypasses
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Test-ReleaseSourceBypasses.ps1
+
+      - name: Verify publish source is an annotated mainline tag
+        if: ${{ github.event_name == 'push' || inputs.publish_release }}
         shell: pwsh
         env:
+          RELEASE_SHA: ${{ github.sha }}
           RELEASE_REF: ${{ github.ref }}
         run: |
-          if ($env:RELEASE_REF -ne 'refs/heads/main') {
-            throw "Manual release publishing must run from main; got '$env:RELEASE_REF'."
-          }
+          git fetch origin main:refs/remotes/origin/main --no-tags
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Assert-ReleaseSource.ps1 `
+            -CommitSha $env:RELEASE_SHA -MainRef origin/main -TagRef $env:RELEASE_REF -RequireAnnotatedTag
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -58,12 +65,18 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
           REF_NAME: ${{ github.ref_name }}
+          RELEASE_REF: ${{ github.ref }}
+          PUBLISH_RELEASE: ${{ github.event_name == 'push' || inputs.publish_release }}
         run: |
           $raw = if ($env:EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_VERSION } else { $env:REF_NAME }
           $v = $raw.Trim()
           if ($v.StartsWith('v', [StringComparison]::OrdinalIgnoreCase)) { $v = $v.Substring(1) }
           if ($v -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
             throw "Release version '$v' is not valid SemVer."
+          }
+          if ($env:PUBLISH_RELEASE -eq 'true' -and
+              -not $env:RELEASE_REF.Equals("refs/tags/v$v", [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Published version '$v' must exactly match selected tag '$($env:RELEASE_REF)'."
           }
           "version=$v" >> $env:GITHUB_OUTPUT
           "is_prerelease=$(if ($v -match '^\d+\.\d+\.\d+-') { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
@@ -224,7 +237,10 @@ jobs:
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ steps.ver.outputs.version }}
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Test-ReleasePayload.ps1 -PayloadPath publish -ExpectedVersion $env:RELEASE_VERSION -RequireValidSignatures
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Test-ReleasePayload.ps1 -PayloadPath publish -ExpectedVersion $env:RELEASE_VERSION -RequireValidSignatures -SkipManifestHashValidation
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Update-ReleasePayloadManifest.ps1 -PayloadPath publish
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Test-ReleasePayload.ps1 -PayloadPath publish -ExpectedVersion $env:RELEASE_VERSION -RequireValidSignatures
 
       - name: Build installer (Inno Setup)
         shell: pwsh
@@ -335,6 +351,7 @@ jobs:
             publish/guardian/Foreman.Guardian.exe
             publish/cu-sidecar/Foreman.CuSidecar.exe
             publish/cu-pilot/Foreman.CuPilot.exe
+            publish/release-payload.manifest.json
 
       - name: Attach installer to GitHub Release
         if: ${{ github.event_name == 'push' || inputs.publish_release }}

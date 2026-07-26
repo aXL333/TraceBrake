@@ -26,6 +26,7 @@ $packages = @(
     @{ Source = 'extension'; Destination = 'foreman' },
     @{ Source = 'extension-liveweave'; Destination = 'liveweave' }
 )
+$manifestPaths = [Collections.Generic.List[string]]::new()
 
 foreach ($package in $packages) {
     $source = Join-Path $repo $package.Source
@@ -49,7 +50,40 @@ foreach ($package in $packages) {
         $targetDirectory = Split-Path -Parent $target
         New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+        $manifestPaths.Add($target.Substring($payload.TrimEnd('\', '/').Length).TrimStart('\', '/'))
     }
 }
 
-Write-Host "Packaged Foreman and LiveWeave browser extensions under $destinationRoot."
+$requiredExecutables = @(
+    'Foreman.exe',
+    'sidecar\Foreman.EtwSidecar.exe',
+    'guardian\Foreman.Guardian.exe',
+    'cu-sidecar\Foreman.CuSidecar.exe',
+    'cu-pilot\Foreman.CuPilot.exe'
+)
+foreach ($relative in $requiredExecutables) {
+    $full = Join-Path $payload $relative
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+        throw "Cannot create release manifest; required executable is missing: $relative"
+    }
+    $manifestPaths.Add($relative)
+}
+
+$entries = @($manifestPaths |
+    ForEach-Object { $_.Replace('/', '\') } |
+    Sort-Object -Unique |
+    ForEach-Object {
+        $full = Join-Path $payload $_
+        [ordered]@{
+            path = $_.Replace('\', '/')
+            sha256 = (Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    })
+$manifest = [ordered]@{
+    schemaVersion = 1
+    files = $entries
+}
+$manifestPath = Join-Path $payload 'release-payload.manifest.json'
+$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+Write-Host "Packaged both browser extensions and wrote $($entries.Count)-file release manifest."

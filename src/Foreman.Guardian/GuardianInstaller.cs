@@ -35,7 +35,7 @@ internal static class GuardianInstaller
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Foreman", "guardian");
     public static string InstalledExePath => Path.Combine(ProgramFilesDir, "Foreman.Guardian.exe");
 
-    public static int Install(int? foremanPid, bool allowUnsignedDevelopment, Action<string> log)
+    public static int Install(int? foremanPid, Action<string> log)
     {
         if (!GuardianInstallReference.TryResolve(foremanPid, Environment.ProcessPath, out var foremanPath, out var referenceReason))
         {
@@ -49,7 +49,7 @@ internal static class GuardianInstaller
         catch (Exception ex) { log($"install REFUSED (root anchor): {ex.Message}"); return 2; }
 
         var (trusted, reason) = GuardianIntegrity.VerifyForInstall(
-            foremanPath, Environment.ProcessPath, recordedInstallRoot, allowUnsignedDevelopment);
+            foremanPath, Environment.ProcessPath, recordedInstallRoot);
         if (!trusted) { log($"install REFUSED (integrity): {reason}"); return 2; }
         log($"integrity ok: {reason}");
 
@@ -57,6 +57,17 @@ internal static class GuardianInstaller
         try
         {
             policy = GuardianClientPolicy.CreateForInstall(foremanPath);
+            var priorPolicyPath = GuardianClientPolicy.PolicyPath(ProgramDataDir);
+            if (File.Exists(priorPolicyPath))
+            {
+                var priorPolicy = GuardianClientPolicy.Load(ProgramDataDir);
+                var replacement = GuardianClientPolicy.CanReplace(priorPolicy, policy);
+                if (!replacement.Allowed)
+                {
+                    log($"install REFUSED (client policy): {replacement.Reason}");
+                    return 2;
+                }
+            }
             log(policy.PublisherAuthenticated
                 ? "client policy: verified publisher pin."
                 : "client policy: unsigned development path + SHA-256 pin (not publisher authenticated).");
@@ -148,6 +159,7 @@ internal static class GuardianInstaller
             StopAndDeleteService(log);
             TryDeleteDir(ProgramFilesDir, log);
             TryDeleteDir(ProgramDataDir, log);
+            GuardianInstallRoot.Restore(priorRoot: null);
             log("guardian uninstalled.");
             return 0;
         }

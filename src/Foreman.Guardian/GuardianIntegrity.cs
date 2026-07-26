@@ -15,9 +15,8 @@ namespace Foreman.Guardian;
 ///    confirms its OWN binary carries the same signer as the installed Foreman.exe — so an agent that overwrote
 ///    the user-writable staged guardian binary can't get its code registered as SYSTEM.
 ///
-/// Install verification requires a signer match for releases. Unsigned development builds are admitted only after
-/// <see cref="GuardianInstallReference"/> resolves a live Foreman launcher and proves the canonical staged layout;
-/// runtime pipe authentication then pins that exact development path + SHA-256.
+/// Install verification requires a signer match. An elevated helper must not be able to manufacture its own trust
+/// anchor from argv or from a user-writable path, so unsigned builds cannot install the LocalSystem service.
 ///
 /// Deliberately duplicated from SidecarIntegrity (App is WPF the guardian must not reference; Core is
 /// cross-platform so Windows-only WinVerifyTrust can't live there). CONSOLIDATE into a shared Windows platform
@@ -40,21 +39,20 @@ public static class GuardianIntegrity
 
     /// <summary>
     /// Install self-verify: is THIS guardian binary signed by the same publisher as Foreman.exe? The resolved live
-    /// launcher must also match the administrator-owned install root once one exists. Unsigned developer builds are
-    /// admitted only with an explicit opt-in; shipped unsigned builds fail closed by default. Never throws.
+    /// launcher must also match the administrator-owned install root once one exists. A verified publisher may
+    /// establish that root on first install; unsigned callers always fail closed. Never throws.
     /// </summary>
     public static (bool Trusted, string Reason) VerifyForInstall(
         string? foremanPath,
         string? guardianPath,
-        string? recordedInstallRoot,
-        bool allowUnsignedDevelopment)
+        string? recordedInstallRoot)
     {
         try
         {
             var referenceSigner = VerifiedSignerThumbprint(foremanPath);
             var subjectSigner = VerifiedSignerThumbprint(guardianPath);
             return DecideForInstall(referenceSigner, subjectSigner, foremanPath, guardianPath,
-                recordedInstallRoot, allowUnsignedDevelopment);
+                recordedInstallRoot);
         }
         catch
         {
@@ -68,8 +66,7 @@ public static class GuardianIntegrity
         string? subjectSigner,
         string? foremanPath,
         string? guardianPath,
-        string? recordedInstallRoot,
-        bool allowUnsignedDevelopment)
+        string? recordedInstallRoot)
     {
         if (string.IsNullOrWhiteSpace(foremanPath) || string.IsNullOrWhiteSpace(guardianPath) ||
             !GuardianInstallReference.LayoutMatches(foremanPath, guardianPath))
@@ -85,12 +82,7 @@ public static class GuardianIntegrity
         if (referenceSigner is not null)
             return Decide(referenceSigner, subjectSigner);
 
-        if (!allowUnsignedDevelopment)
-            return (false, "Foreman is unsigned; Guardian installation requires an explicit --allow-unsigned-development opt-in.");
-        if (subjectSigner is not null)
-            return (false, "an unsigned Foreman reference cannot authorise a differently-signed guardian.");
-
-        return (true, "explicit unsigned-development install matched the live launcher, staged layout, and recorded root.");
+        return (false, "Foreman is unsigned; an administrator-owned argv-independent trust anchor is required before Guardian installation.");
     }
 
     /// <summary>Authenticode signer thumbprint IF the file's embedded signature is valid (chains to a trusted root); else null.</summary>

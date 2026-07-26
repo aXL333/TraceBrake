@@ -5,8 +5,7 @@ namespace Foreman.Guardian.Tests;
 /// <summary>
 /// Circle-back Phase A, step 6: the guardian's Authenticode gate — used both to authenticate pipe clients (only
 /// the same-publisher Foreman may request a seal) and to self-verify before installing as SYSTEM (LPE guard). The
-/// pure release decision fails closed for unsigned inputs; the separate install path admits an unsigned developer
-/// build only after resolving a live Foreman process and validating the canonical staged layout.
+/// pure release and install decisions fail closed for unsigned inputs.
 /// </summary>
 public sealed class GuardianIntegrityTests
 {
@@ -34,23 +33,31 @@ public sealed class GuardianIntegrityTests
             subjectSigner: null,
             foremanPath: @"C:\Users\attacker\x\Foreman.exe",
             guardianPath: @"C:\Users\attacker\x\guardian\Foreman.Guardian.exe",
-            recordedInstallRoot: @"C:\Users\operator\AppData\Local\Programs\Foreman",
-            allowUnsignedDevelopment: true);
+            recordedInstallRoot: @"C:\Users\operator\AppData\Local\Programs\Foreman");
 
         Assert.False(result.Trusted);
         Assert.Contains("administrator-recorded", result.Reason);
     }
 
     [Fact]
-    public void UnsignedInstall_MatchingRootStillRequiresExplicitDevelopmentOptIn()
+    public void UnsignedInstall_MissingRecordedRootCannotBeAuthorisedByArgv()
     {
         const string root = @"C:\Foreman-dev";
-        var withoutOptIn = GuardianIntegrity.DecideForInstall(
-            null, null, root + @"\Foreman.exe", root + @"\guardian\Foreman.Guardian.exe", root, false);
-        var withOptIn = GuardianIntegrity.DecideForInstall(
-            null, null, root + @"\Foreman.exe", root + @"\guardian\Foreman.Guardian.exe", root, true);
+        var result = GuardianIntegrity.DecideForInstall(
+            null, null, root + @"\Foreman.exe", root + @"\guardian\Foreman.Guardian.exe", recordedInstallRoot: null);
 
-        Assert.False(withoutOptIn.Trusted);
-        Assert.True(withOptIn.Trusted);
+        Assert.False(result.Trusted);
+        Assert.Contains("argv-independent", result.Reason);
+    }
+
+    [Fact]
+    public void SignedInstall_MissingRecordedRootCanEstablishAnchor()
+    {
+        const string root = @"C:\Program Files\Foreman";
+        var result = GuardianIntegrity.DecideForInstall(
+            "AABB", "aabb", root + @"\Foreman.exe", root + @"\guardian\Foreman.Guardian.exe",
+            recordedInstallRoot: null);
+
+        Assert.True(result.Trusted);
     }
 }

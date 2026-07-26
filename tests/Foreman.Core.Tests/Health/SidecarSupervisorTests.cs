@@ -14,6 +14,7 @@ public sealed class SidecarSupervisorTests
         public bool LaunchInProgress;
         public bool ThrowOnNotify;
         public bool ThrowOnRelaunch;
+        public bool DeclineOnRelaunch;
         public int Relaunches;
         public readonly List<(ForemanSeverity Sev, string Msg)> Notices = [];
         public SidecarSupervisor Make(int maxRelaunch = 2, int graceTicks = 1) => new(
@@ -23,6 +24,7 @@ public sealed class SidecarSupervisorTests
             () =>
             {
                 Relaunches++;
+                if (DeclineOnRelaunch) LaunchDeclined = true;
                 if (ThrowOnRelaunch) throw new InvalidOperationException("relaunch failed");
             },
             (sev, msg) =>
@@ -31,8 +33,7 @@ public sealed class SidecarSupervisorTests
                 Notices.Add((sev, msg));
             },
             maxRelaunch, graceTicks,
-            () => LaunchInProgress,
-            maxLaunchInProgressTicks: 2);
+            () => LaunchInProgress);
     }
 
     [Fact]
@@ -188,21 +189,25 @@ public sealed class SidecarSupervisorTests
     }
 
     [Fact]
-    public void StuckLaunchInProgress_ExpiresAndRecoversInsteadOfWedgingSilently()
+    public void PendingUacLaunch_RemainsOwnedByControllerUntilItActuallyResolves()
     {
-        var rig = new Rig { Connected = true };
+        var rig = new Rig { Connected = true, DeclineOnRelaunch = true };
         var sup = rig.Make(maxRelaunch: 1, graceTicks: 0);
         sup.Tick();
 
         rig.Connected = false;
         rig.LaunchInProgress = true;
-        sup.Tick();
-        sup.Tick();
-        Assert.Empty(rig.Notices);
+        for (var i = 0; i < 20; i++) sup.Tick();
 
+        Assert.Empty(rig.Notices);
+        Assert.Equal(0, rig.Relaunches);
+        Assert.False(rig.LaunchDeclined);
+
+        rig.LaunchInProgress = false;
         sup.Tick();
 
         Assert.Equal(1, rig.Relaunches);
+        Assert.True(rig.LaunchDeclined);
         var notice = Assert.Single(rig.Notices);
         Assert.Equal(ForemanSeverity.High, notice.Sev);
         Assert.Contains("stopped unexpectedly", notice.Msg);

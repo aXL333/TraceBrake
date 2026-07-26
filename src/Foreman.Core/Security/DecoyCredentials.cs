@@ -370,16 +370,17 @@ public sealed class DecoyCredentialManager(IDecoyFileSystem fs)
     {
         var still = new List<string>();
         var reclaimed = new List<string>();
+        var missing = new List<string>();
         foreach (var path in trackedPaths)
         {
-            if (!fs.Exists(path)) { reclaimed.Add(path); continue; }     // user deleted it
+            if (!fs.Exists(path)) { reclaimed.Add(path); missing.Add(path); continue; }
             string text;
             try { text = fs.ReadAllText(path); }
             catch { still.Add(path); continue; }                          // unreadable — keep tracking, don't assume
             if (DecoyCredentialPolicy.IsDecoyContent(text)) still.Add(path);
             else reclaimed.Add(path);                                     // real content now lives here — retire, never delete
         }
-        return new RevalidateResult(still, reclaimed);
+        return new RevalidateResult(still, reclaimed, missing);
     }
 }
 
@@ -387,4 +388,7 @@ public sealed class DecoyCredentialManager(IDecoyFileSystem fs)
 /// Outcome of <see cref="DecoyCredentialManager.Revalidate"/>: which tracked slots are still decoys vs.
 /// which were reclaimed (file gone or real credentials written over the decoy — must be untracked, never deleted).
 /// </summary>
-public sealed record RevalidateResult(IReadOnlyList<string> StillDecoys, IReadOnlyList<string> Reclaimed);
+public sealed record RevalidateResult(
+    IReadOnlyList<string> StillDecoys,
+    IReadOnlyList<string> Reclaimed,
+    IReadOnlyList<string> Missing);

@@ -28,14 +28,12 @@ public sealed class SidecarSupervisor
     private readonly Action<ForemanSeverity, string> _notify;
     private readonly int _maxRelaunch;
     private readonly int _graceTicks;
-    private readonly int _maxLaunchInProgressTicks;
 
     private bool _wasConnected;       // seen connected at least once this expected-up episode
     private int _relaunchAttempts;    // relaunches tried this down-spell
     private int _downTicks;           // consecutive ticks expected-up but not connected
     private bool _downNotified;       // a down notice already emitted this down-spell
     private bool _exhaustedNotified;  // the give-up notice already emitted this down-spell
-    private int _launchInProgressTicks;
 
     public SidecarSupervisor(
         Func<bool> expectedUp,
@@ -45,8 +43,7 @@ public sealed class SidecarSupervisor
         Action<ForemanSeverity, string> notify,
         int maxRelaunch = 2,
         int graceTicks = 1,
-        Func<bool>? launchInProgress = null,
-        int maxLaunchInProgressTicks = 3)
+        Func<bool>? launchInProgress = null)
     {
         _expectedUp = expectedUp;
         _isConnected = isConnected;
@@ -56,7 +53,6 @@ public sealed class SidecarSupervisor
         _notify = notify;
         _maxRelaunch = Math.Max(0, maxRelaunch);
         _graceTicks = Math.Max(0, graceTicks);
-        _maxLaunchInProgressTicks = Math.Max(1, maxLaunchInProgressTicks);
     }
 
     /// <summary>Advance the state machine one step. Call on a periodic timer (e.g. every ~30s).</summary>
@@ -79,7 +75,6 @@ public sealed class SidecarSupervisor
             _downTicks = 0;
             _downNotified = false;
             _exhaustedNotified = false;
-            _launchInProgressTicks = 0;
             return;
         }
 
@@ -88,17 +83,9 @@ public sealed class SidecarSupervisor
         // budget while a real launch is already pending, or watchdog ticks can stack UAC prompts.
         if (_launchInProgress())
         {
-            if (++_launchInProgressTicks <= _maxLaunchInProgressTicks)
-            {
-                _downTicks = 0;
-                return;
-            }
-
-            // A helper that never reaches the nonce handshake must not suppress supervision forever. Once the
-            // bounded launch window expires, treat it as down and let the normal recovery budget take over.
+            _downTicks = 0;
+            return;
         }
-        else
-            _launchInProgressTicks = 0;
 
         // Expected up but not connected. Ride out one grace tick so a settings-toggle restart's brief disconnect
         // (or a slow first launch) is not mistaken for a failure.
@@ -120,7 +107,6 @@ public sealed class SidecarSupervisor
                     _downNotified = true;
                 }
                 _relaunchAttempts++;
-                _launchInProgressTicks = 0;
                 try { _relaunch(); }
                 catch
                 {
@@ -160,7 +146,6 @@ public sealed class SidecarSupervisor
         _downTicks = 0;
         _downNotified = false;
         _exhaustedNotified = false;
-        _launchInProgressTicks = 0;
     }
 
     private void TryNotify(ForemanSeverity severity, string message)

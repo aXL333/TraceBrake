@@ -7,7 +7,9 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$')]
     [string] $ExpectedVersion,
 
-    [switch] $RequireValidSignatures
+    [switch] $RequireValidSignatures,
+
+    [switch] $SkipManifestHashValidation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,33 +64,72 @@ if ($badSignature.Count -gt 0) {
     throw "Release payload contains unsigned or invalid executable(s): $($badSignature -join ', ')"
 }
 
-$sidecarPrefixes = @('Foreman.EtwSidecar.', 'Foreman.Guardian.', 'Foreman.CuSidecar.', 'Foreman.CuPilot.')
-$stray = @(Get-ChildItem -LiteralPath $root -File -Force | Where-Object {
-    $name = $_.Name
-    $sidecarPrefixes | Where-Object { $name.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }
-})
-if ($stray.Count -gt 0) {
-    throw "Release payload contains stray root-level sidecar artifact(s): $($stray.Name -join ', ')"
+$manifestPath = Join-Path $root 'release-payload.manifest.json'
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw 'Release payload is missing release-payload.manifest.json.'
+}
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($manifest.schemaVersion -ne 1 -or $null -eq $manifest.files) {
+    throw 'Release payload manifest has an unsupported schema.'
 }
 
-# Every helper must remain a self-contained single-file publish. A neighbouring managed/native payload would
-# sit outside the verified EXE and can recreate DLL-search or load-context hijack paths. Use -Force so a hidden
-# sibling cannot evade release validation.
-$singleFileDirectories = @{
-    'sidecar'    = 'Foreman.EtwSidecar.exe'
-    'guardian'   = 'Foreman.Guardian.exe'
-    'cu-sidecar' = 'Foreman.CuSidecar.exe'
-    'cu-pilot'   = 'Foreman.CuPilot.exe'
+$allowedRootFiles = @('Foreman.exe', 'release-payload.manifest.json')
+$actualRootFiles = @(Get-ChildItem -LiteralPath $root -File -Force | ForEach-Object Name)
+$unexpectedRootFiles = @($actualRootFiles | Where-Object { $_ -notin $allowedRootFiles })
+$missingRootFiles = @($allowedRootFiles | Where-Object { $_ -notin $actualRootFiles })
+if ($unexpectedRootFiles.Count -gt 0 -or $missingRootFiles.Count -gt 0) {
+    throw "Release payload root purity failed; unexpected=[$($unexpectedRootFiles -join ', ')], missing=[$($missingRootFiles -join ', ')]."
 }
-foreach ($entry in $singleFileDirectories.GetEnumerator()) {
-    $directory = Join-Path $root $entry.Key
-    $expected = Join-Path $directory $entry.Value
-    $unexpected = @(Get-ChildItem -LiteralPath $directory -File -Recurse -Force | Where-Object {
-        $_.FullName -ne $expected
-    })
-    if ($unexpected.Count -gt 0) {
-        $relative = @($unexpected | ForEach-Object { Get-RelativeChildPath $root $_.FullName })
-        throw "Helper '$($entry.Key)' is not a single-file payload: $($relative -join ', ')"
+
+$allowedRootDirectories = @('sidecar', 'guardian', 'cu-sidecar', 'cu-pilot', 'extensions')
+$actualRootDirectories = @(Get-ChildItem -LiteralPath $root -Directory -Force | ForEach-Object Name)
+$unexpectedRootDirectories = @($actualRootDirectories | Where-Object { $_ -notin $allowedRootDirectories })
+$missingRootDirectories = @($allowedRootDirectories | Where-Object { $_ -notin $actualRootDirectories })
+if ($unexpectedRootDirectories.Count -gt 0 -or $missingRootDirectories.Count -gt 0) {
+    throw "Release payload directory purity failed; unexpected=[$($unexpectedRootDirectories -join ', ')], missing=[$($missingRootDirectories -join ', ')]."
+}
+
+$declared = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entry in $manifest.files) {
+    $manifestRelative = [string]$entry.path
+    if ([string]::IsNullOrWhiteSpace($manifestRelative) -or [IO.Path]::IsPathRooted($manifestRelative) -or
+        ($manifestRelative -split '[\\/]') -contains '..') {
+        throw "Release payload manifest contains an unsafe path: '$manifestRelative'"
+    }
+    $normal = $manifestRelative.Replace('/', '\')
+    if ($declared.ContainsKey($normal)) {
+        throw "Release payload manifest contains duplicate path: $manifestRelative"
+    }
+    $declared.Add($normal, [string]$entry.sha256)
+}
+
+$expectedFiles = @($declared.Keys) + 'release-payload.manifest.json'
+$actualFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -Force | ForEach-Object {
+    Get-RelativeChildPath $root $_.FullName
+})
+$undeclaredFiles = @($actualFiles | Where-Object { $_ -notin $expectedFiles })
+$missingDeclaredFiles = @($expectedFiles | Where-Object { $_ -notin $actualFiles })
+if ($undeclaredFiles.Count -gt 0 -or $missingDeclaredFiles.Count -gt 0) {
+    throw "Release payload tree differs from its manifest; undeclared=[$($undeclaredFiles -join ', ')], missing=[$($missingDeclaredFiles -join ', ')]."
+}
+
+$reparsePoints = @(Get-ChildItem -LiteralPath $root -Recurse -Force | Where-Object {
+    ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+})
+if ($reparsePoints.Count -gt 0) {
+    throw "Release payload contains reparse point(s): $($reparsePoints.FullName -join ', ')"
+}
+
+if (-not $SkipManifestHashValidation) {
+    $hashMismatches = @()
+    foreach ($entry in $declared.GetEnumerator()) {
+        $actualHash = (Get-FileHash -LiteralPath (Join-Path $root $entry.Key) -Algorithm SHA256).Hash
+        if (-not $actualHash.Equals($entry.Value, [StringComparison]::OrdinalIgnoreCase)) {
+            $hashMismatches += $entry.Key
+        }
+    }
+    if ($hashMismatches.Count -gt 0) {
+        throw "Release payload hash mismatch for declared file(s): $($hashMismatches -join ', ')"
     }
 }
 
@@ -119,4 +160,5 @@ if ($packagedTests.Count -gt 0) {
 }
 
 $signatureNote = if ($RequireValidSignatures) { ', valid Authenticode signatures' } else { '' }
-Write-Host "Release payload verified: $($required.Count) executables, two MV3 extensions, version $ExpectedVersion$signatureNote."
+$hashNote = if ($SkipManifestHashValidation) { ', hashes deferred for signed overlay' } else { ', manifest hashes' }
+Write-Host "Release payload verified: exact $($declared.Count)-file tree, $($required.Count) executables, two MV3 extensions, version $ExpectedVersion$signatureNote$hashNote."

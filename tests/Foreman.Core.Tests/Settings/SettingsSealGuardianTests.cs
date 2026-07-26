@@ -29,7 +29,9 @@ public sealed class SettingsSealGuardianTests
     public void Compute_MatchesComputeMacOverProjection()
     {
         var s = new ForemanSettings();
-        Assert.Equal(SettingsSeal.ComputeMac(SettingsSeal.SecurityProjection(s), "secret"), SettingsSeal.Compute(s, "secret"));
+        Assert.Equal(
+            SettingsSeal.LocalScheme + SettingsSeal.ComputeMac(SettingsSeal.SecurityProjection(s), "secret"),
+            SettingsSeal.Compute(s, "secret"));
     }
 
     [Fact]
