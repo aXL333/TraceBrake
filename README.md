@@ -27,6 +27,12 @@
 > Post-deadline security and packaging maintenance is identified separately and is not claimed as
 > submission-period work.
 
+## Product Overview
+
+[Watch the current TraceBrake product overview](docs/assets/tracebrake-product-overview.mp4) — a narrated tour of
+the control room, event attribution, behaviour metrics, universal trust settings, cross-agent oversight, the
+unified browser/desktop/Android broker, LiveWeave, Presence Lock, Vault controls and recovery safeguards.
+
 ## Why TraceBrake Exists
 
 AI coding agents can move quickly across shells, files, credentials, networked tools, and MCP servers. Most of that work is useful. Some of it is surprising, expensive, stuck, or unsafe.
