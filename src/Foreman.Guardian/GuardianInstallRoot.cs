@@ -7,6 +7,8 @@ namespace Foreman.Guardian;
 [SupportedOSPlatform("windows")]
 internal static class GuardianInstallRoot
 {
+    // Published SYSTEM-owned security anchor. Keep the legacy registry path so an in-place upgrade reads the
+    // same trust root; this is an internal compatibility identifier, not public branding.
     private const string KeyPath = @"SOFTWARE\Foreman Agent Safety";
     private const string ValueName = "InstallRoot";
 

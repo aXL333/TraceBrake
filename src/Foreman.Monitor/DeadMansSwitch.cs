@@ -8,7 +8,7 @@ namespace Foreman.Monitor;
 
 /// <summary>
 /// Dead-man's switch (task #62): a periodic human tap-in. When the operator has been away (no keyboard/mouse
-/// input) past the configured window WHILE one or more agents keep running, Foreman is operating unattended — it
+/// input) past the configured window WHILE one or more agents keep running, TraceBrake is operating unattended — it
 /// raises a single heads-up notice per absence episode and re-arms once the operator returns. Opt-in. Reads only
 /// idle DURATION (no keylogging), via the same <see cref="IUserInputProvider"/> the hang-threshold scaling uses.
 ///
@@ -60,7 +60,7 @@ public sealed class DeadMansSwitch : IDisposable
         var span = absence >= 120 ? $"~{absence / 60}h" : $"{absence}m";
         _bus.Publish(new MonitoringNoticeEvent(
             DateTimeOffset.UtcNow, ForemanSeverity.Medium, "Foreman.DeadMansSwitch",
-            $"No operator activity for {span} while {active} agent process(es) keep running — Foreman is operating " +
+            $"No operator activity for {span} while {active} agent process(es) keep running — TraceBrake is operating " +
             "UNATTENDED. If you didn't intend to leave agents running, review what they've done and consider pausing them."));
     }
 

@@ -7,10 +7,17 @@ public sealed class StartupRegistrationTests
     private const string Exe = @"C:\Program Files\Foreman\Foreman.exe";
 
     [Fact] public void RunValueName_UsesPublicProductName()
-        => Assert.Equal("Foreman Agent Safety", StartupRegistration.RunValueName);
+        => Assert.Equal("TraceBrake", StartupRegistration.RunValueName);
 
     [Fact] public void LegacyRunValueName_PreservesUpgradeCompatibility()
         => Assert.Equal("Foreman", StartupRegistration.LegacyRunValueName);
+
+    [Fact] public void LegacyRunValueNames_IncludeEveryShippedForemanAlias()
+    {
+        Assert.Contains("Foreman", StartupRegistration.LegacyRunValueNames);
+        Assert.Contains("ForemanAgentSafety", StartupRegistration.LegacyRunValueNames);
+        Assert.Contains("Foreman Agent Safety", StartupRegistration.LegacyRunValueNames);
+    }
 
     private static Func<string, bool> Exists(params string[] paths) =>
         p => paths.Contains(p, StringComparer.OrdinalIgnoreCase);
@@ -54,6 +61,26 @@ public sealed class StartupRegistrationTests
     [Fact] public void OtherExeStillExists_NoHijack()
         // e.g. a Debug-bin run must not steal the entry from a live published install
         => Assert.False(StartupRegistration.NeedsRepair(@"""C:\Published\Foreman.exe""", Exe, Exists(@"C:\Published\Foreman.exe", Exe)));
+
+    [Fact] public void ExistingLegacyBrandedTarget_RepairsToRenamedCurrentExe()
+    {
+        // Rename bypass: StartupManager may already have migrated the VALUE NAME to "TraceBrake" while retaining
+        // an existing Foreman.exe target. Existence alone must not make that legacy product binary authoritative.
+        const string legacy = @"W:\TOOLS\Foreman\bin\Foreman.exe";
+        const string current = @"C:\Users\me\AppData\Local\Programs\TraceBrake\TraceBrake.exe";
+
+        Assert.True(StartupRegistration.NeedsRepair(
+            $"\"{legacy}\"", current, Exists(legacy, current)));
+    }
+
+    [Fact] public void ExistingCurrentProductInstall_IsNotStolenByCurrentProductDebugBuild()
+    {
+        const string published = @"C:\Users\me\AppData\Local\Programs\TraceBrake\TraceBrake.exe";
+        const string debug = @"W:\TOOLS\Foreman\bin\Debug\TraceBrake.exe";
+
+        Assert.False(StartupRegistration.NeedsRepair(
+            $"\"{published}\"", debug, Exists(published, debug)));
+    }
 
     [Fact] public void RegisteredExeGone_Repairs()
         => Assert.True(StartupRegistration.NeedsRepair(@"""C:\OldInstall\Foreman.exe""", Exe, Exists(Exe)));

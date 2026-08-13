@@ -9,11 +9,11 @@ using Foreman.Core.ComputerUse;
 /// never be crossed mid-gesture:
 ///   - panic: read the shared MMF (seqlock) via <paramref name="panicNow"/>; panic=1 => abort with HaltedMidStream.
 ///   - INV-2: the action's BoundHwnd must equal the AUTHORITATIVE MMF boundHwnd (never trust the pipe payload alone).
-///   - confinement (INV-9 + foreground): the foreground window must BE the bound window, never Foreman's own UI, never
+///   - confinement (INV-9 + foreground): the foreground window must BE the bound window, never TraceBrake's own UI, never
 ///     shell chrome; verified immediately before AND after each single INPUT. No bare absolute move - a move resolves
 ///     to the bound window's client rect or is refused.
 ///   - one-INPUT-per-batch: every SendInput call carries exactly ONE INPUT (nInputs=1), so panic interleaves between
-///     each. dwExtraInfo is stamped with Foreman's magic (INV-4 sub-classifies our injection).
+///     each. dwExtraInfo is stamped with TraceBrake's magic (INV-4 sub-classifies our injection).
 /// Refuses (Ok=false) rather than injecting blind on any failed gate.
 /// </summary>
 internal static class CuInputInjector
@@ -93,7 +93,7 @@ internal static class CuInputInjector
         owed.Clear();
     }
 
-    // Foreground confinement + INV-9. The foreground must be exactly the bound window; reject Foreman's own windows and
+    // Foreground confinement + INV-9. The foreground must be exactly the bound window; reject TraceBrake's own windows and
     // shell chrome outright. (Owned-popup / menu-class relaxation for read-only verbs is a later refinement - 4b-2 is strict.)
     private static bool Confined(IntPtr bound, int foremanPid, out string why)
     {
@@ -101,7 +101,7 @@ internal static class CuInputInjector
         var fg = GetForegroundWindow();
         if (fg == IntPtr.Zero) { why = "no foreground window"; return false; }
         GetWindowThreadProcessId(fg, out var fgPid);
-        if ((int)fgPid == foremanPid) { why = "foreground is Foreman's own UI (INV-9)"; return false; }
+        if ((int)fgPid == foremanPid) { why = "foreground is TraceBrake's own UI (INV-9)"; return false; }
         var cls = ClassOf(fg);
         if (cls is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "NotifyIconOverflowWindow" or "Progman" or "WorkerW"
             or "Windows.UI.Core.CoreWindow" or "MultitaskingViewFrame" or "XamlExplorerHostIslandWindow" or "ForegroundStaging")

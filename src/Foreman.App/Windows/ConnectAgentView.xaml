@@ -50,10 +50,10 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
-            <TextBlock Text="Connect an agent to Foreman Agent Safety" FontSize="20" FontWeight="SemiBold"
+            <TextBlock Text="Connect an agent to TraceBrake" FontSize="20" FontWeight="SemiBold"
                        Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
             <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0"
-                       Text="Foreman Agent Safety runs a local MCP server your AI agent connects to. That connection is how Foreman reports status to the agent, how the agent can pre-flight a command, and how 'Ask Harness' reaches it. Pick your agent below, then restart it." />
+                       Text="TraceBrake runs a local MCP server your AI agent connects to. That connection is how TraceBrake reports status to the agent, how the agent can pre-flight a command, and how 'Ask Harness' reaches it. Pick your agent below, then restart it." />
             <!-- Connected list lives in the fixed header, so cap it with its own scroll: a flood of entries
                  must never inflate the header and push the agent cards (Row 1) off-screen. -->
             <Border Margin="0,10,0,0" CornerRadius="6" Padding="10,7"
@@ -74,14 +74,14 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
 
-                <!-- Foreman browser extension + shared computer-use driver. Hoisted to the top: the driver gate is the
+                <!-- TraceBrake browser extension + shared computer-use driver. Hoisted to the top: the driver gate is the
                      primary broker control, so it sits directly under "Connect all agents" instead of last. -->
                 <Border CornerRadius="8" Padding="14" Margin="0,0,0,12"
                         Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                     <StackPanel>
                         <TextBlock Text="🔒 Unified computer-use broker (on-device)" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="The same audited cu_* plugin routes approved harnesses to browser use and the optional Android/ADB bridge. Browser execution uses the paired extension below; Android executes locally in Foreman. Click Pair, then enter the shown code in the extension's Options within 2 minutes." />
+                                   Text="The same audited cu_* plugin routes approved harnesses to browser use and the optional Android/ADB bridge. Browser execution uses the paired extension below; Android executes locally in TraceBrake. Click Pair, then enter the shown code in the extension's Options within 2 minutes." />
                         <Button Content="Pair…" Click="PairExtensionClick" HorizontalAlignment="Left"
                                 Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
 
@@ -90,7 +90,7 @@
                             <StackPanel>
                                 <TextBlock Text="Computer-use driver(s)" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" />
                                 <TextBlock Style="{StaticResource Muted}" Margin="0,3,0,7"
-                                           Text="Tick which harness(es) may submit browser and Android/ADB (cu_*) actions through Foreman's unified plugin. None = operator only; 'any' = every connected harness. Per-harness Browser use / Computer use policies still apply. Actions remain audited, approval-gated when risky, and panic-haltable." />
+                                           Text="Tick which harness(es) may submit browser and Android/ADB (cu_*) actions through TraceBrake's unified plugin. None = operator only; 'any' = every connected harness. Per-harness Browser use / Computer use policies still apply. Actions remain audited, approval-gated when risky, and panic-haltable." />
                                 <ItemsControl x:Name="CuDriverList">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -115,7 +115,7 @@
                     <StackPanel>
                         <TextBlock Text="Claude Code" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Easiest: let Foreman Agent Safety add the entry for you — it writes a user-scope &quot;foreman&quot; server into ~/.claude.json (a backup of the original is saved first)." />
+                                   Text="Easiest: let TraceBrake add the entry for you — it writes a user-scope &quot;foreman&quot; server into ~/.claude.json (a backup of the original is saved first)." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectClaudeClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -134,14 +134,14 @@
                     <StackPanel>
                         <TextBlock Text="Codex" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Easiest: let Foreman Agent Safety add the entry for you. It writes a user-scope &quot;foreman&quot; server into ~/.codex/config.toml and adds a marked Foreman Agent Safety section to ~/.codex/AGENTS.md so Codex knows how to receive and answer Ask Harness and audit prompts." />
+                                   Text="Easiest: let TraceBrake add the entry for you. It writes a user-scope &quot;foreman&quot; server into ~/.codex/config.toml and adds a marked TraceBrake section to ~/.codex/AGENTS.md so Codex knows how to receive and answer Ask Harness and audit prompts." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectCodexClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
                             <Button Content="Copy TOML" Click="CopyCodexTomlClick" />
                         </StackPanel>
                         <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
-                                   Text="Or paste this into ~/.codex/config.toml, then add the Foreman Agent Safety MCP Monitor section to ~/.codex/AGENTS.md and restart Codex:" />
+                                   Text="Or paste this into ~/.codex/config.toml, then add the TraceBrake MCP Monitor section to ~/.codex/AGENTS.md and restart Codex:" />
                         <TextBox x:Name="CodexTomlBox" Style="{StaticResource Mono}" Height="112" />
                     </StackPanel>
                 </Border>
@@ -152,7 +152,7 @@
                     <StackPanel>
                         <TextBlock Text="Cursor" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Easiest: let Foreman Agent Safety add the entry for you — it writes a &quot;foreman&quot; remote server into Cursor's ~/.cursor/mcp.json (a backup of the original is saved first)." />
+                                   Text="Easiest: let TraceBrake add the entry for you — it writes a &quot;foreman&quot; remote server into Cursor's ~/.cursor/mcp.json (a backup of the original is saved first)." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectCursorClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -170,7 +170,7 @@
                     <StackPanel>
                         <TextBlock Text="OpenCode" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Easiest: let Foreman Agent Safety add the entry for you — it writes a remote &quot;foreman&quot; server into the mcp object of OpenCode's opencode.json (a backup of the original is saved first)." />
+                                   Text="Easiest: let TraceBrake add the entry for you — it writes a remote &quot;foreman&quot; server into the mcp object of OpenCode's opencode.json (a backup of the original is saved first)." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectOpenCodeClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -188,7 +188,7 @@
                     <StackPanel>
                         <TextBlock Text="GitHub Copilot CLI" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Easiest: let Foreman Agent Safety add the entry for you — it writes an HTTP &quot;foreman&quot; server into ~/.copilot/mcp-config.json (a backup of the original is saved first)." />
+                                   Text="Easiest: let TraceBrake add the entry for you — it writes an HTTP &quot;foreman&quot; server into ~/.copilot/mcp-config.json (a backup of the original is saved first)." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectCopilotClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -206,7 +206,7 @@
                     <StackPanel>
                         <TextBlock Text="Gemini CLI" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Easiest: let Foreman Agent Safety add the entry for you — it writes a streamable-HTTP &quot;foreman&quot; server into ~/.gemini/settings.json (a backup of the original is saved first). Note Gemini uses httpUrl for streamable HTTP, not url." />
+                                   Text="Easiest: let TraceBrake add the entry for you — it writes a streamable-HTTP &quot;foreman&quot; server into ~/.gemini/settings.json (a backup of the original is saved first). Note Gemini uses httpUrl for streamable HTTP, not url." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectGeminiClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -224,7 +224,7 @@
                     <StackPanel>
                         <TextBlock Text="LM Studio" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="Writes a local &quot;foreman&quot; bridge into LM Studio's ~/.lmstudio/mcp.json (a backup is saved first; LM Studio reloads it). This works around an LM Studio bug (#1892) where it drops the Authorization header on REMOTE MCP servers — so instead LM Studio launches a small local mcp-remote bridge (via npx; needs Node) that injects Foreman's token itself and forwards to the loopback endpoint. After connecting, click Restart in LM Studio's Integrations panel. Heads-up: the bridge pulls mcp-remote from npm on first run." />
+                                   Text="Writes a local &quot;foreman&quot; bridge into LM Studio's ~/.lmstudio/mcp.json (a backup is saved first; LM Studio reloads it). This works around an LM Studio bug (#1892) where it drops the Authorization header on REMOTE MCP servers — so instead LM Studio launches a small local mcp-remote bridge (via npx; needs Node) that injects TraceBrake's token itself and forwards to the loopback endpoint. After connecting, click Restart in LM Studio's Integrations panel. Heads-up: the bridge pulls mcp-remote from npm on first run." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Connect automatically" Click="ConnectLmStudioClick" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -242,7 +242,7 @@
                     <StackPanel>
                         <TextBlock Text="T3 Code (control plane)" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,10"
-                                   Text="T3 Code runs an underlying agent (Claude Code, Codex, or OpenCode). Connect that agent using its card above — T3 Code uses the same MCP server, and Foreman Agent Safety monitors T3 Code itself as the control plane. 'Connect automatically' copies the config to paste into whichever agent T3 Code drives." />
+                                   Text="T3 Code runs an underlying agent (Claude Code, Codex, or OpenCode). Connect that agent using its card above — T3 Code uses the same MCP server, and TraceBrake monitors T3 Code itself as the control plane. 'Connect automatically' copies the config to paste into whichever agent T3 Code drives." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                             <Button Content="Copy config" Click="ConnectT3Click" Margin="0,0,8,0"
                                     Background="{StaticResource AccentBrush}" Foreground="#FF0D0F12" FontWeight="Bold" />
@@ -273,7 +273,7 @@
                     <StackPanel>
                         <TextBlock Text="🌐 LiveWeave (on-device page builder)" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,8"
-                                   Text="LiveWeave pairs through the browser extension and renders into a local Foreman-owned canvas. In the extension options, choose LiveWeave mode and a driver harness before pairing." />
+                                   Text="LiveWeave pairs through the browser extension and renders into a local TraceBrake-owned canvas. In the extension options, choose LiveWeave mode and a driver harness before pairing." />
                         <TextBlock x:Name="LiveWeaveStatusText" Style="{StaticResource Muted}" Margin="0,0,0,8" />
                         <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,10"
                                    Text="Once paired, only the selected driver harness, or the operator token, can drive LiveWeave. Empty driver means operator-only; any is an explicit all-harness mode." />

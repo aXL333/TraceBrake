@@ -105,7 +105,7 @@ public sealed class WmiProcessWatcher : IDisposable
                     _degraded = true;
                     _bus.Publish(new MonitoringNoticeEvent(DateTimeOffset.UtcNow, ForemanSeverity.High, "Foreman.Monitor",
                         $"Process monitoring is DEGRADED — WMI watchers failed to start ({ex.Message}). " +
-                        "Hang/orphan/command detection is paused; Foreman will keep retrying every 30s."));
+                        "Hang/orphan/command detection is paused; TraceBrake will keep retrying every 30s."));
                 }
             }
         }
@@ -182,11 +182,11 @@ public sealed class WmiProcessWatcher : IDisposable
         }
     }
 
-    // A process NAMED like Foreman but running from a DIFFERENT path than the real Foreman is a strong IOC: an
-    // agent impersonating the watchdog (e.g. to inherit a self-exemption or fool the operator). Foreman's own
+    // A process NAMED like TraceBrake but running from a DIFFERENT path than the real TraceBrake is a strong IOC: an
+    // agent impersonating the watchdog (e.g. to inherit a self-exemption or fool the operator). TraceBrake's own
     // process is excluded by path. Best-effort — an elevated impostor's path may be unreadable (the rarer case).
     private static readonly HashSet<string> _foremanProcessNames = new(StringComparer.OrdinalIgnoreCase)
-        { "Foreman.exe", "Foreman.App.exe", "Foreman", "Foreman.App" };
+        { "TraceBrake.exe", "TraceBrake", "Foreman.exe", "Foreman.App.exe", "Foreman", "Foreman.App" };
 
     private void CheckForemanImpersonation(ProcessRecord record)
     {
@@ -198,7 +198,7 @@ public sealed class WmiProcessWatcher : IDisposable
         _bus.Publish(new MonitoringNoticeEvent(
             DateTimeOffset.UtcNow, ForemanSeverity.High, "Foreman.Integrity",
             $"A process named '{record.Name}' (pid {record.Pid}) is running from '{record.ExecutablePath}', not " +
-            "Foreman's own install location — a process impersonating the watchdog. Investigate and stop it."));
+            "TraceBrake's own install location — a process impersonating the watchdog. Investigate and stop it."));
     }
 
     private void OnProcessCreated(object sender, EventArrivedEventArgs e)

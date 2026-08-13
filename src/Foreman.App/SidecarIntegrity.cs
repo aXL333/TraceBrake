@@ -9,9 +9,9 @@ namespace Foreman.App;
 /// Gates whether the elevated sidecar binary is trustworthy to launch <b>with administrator rights</b>.
 ///
 /// The sidecar lives in a same-user-writable install dir, so a monitored agent could overwrite it and — because
-/// the sidecar manifest forces requireAdministrator — turn Foreman's own (publisher-branded) UAC prompt into a
+/// the sidecar manifest forces requireAdministrator — turn TraceBrake's own (publisher-branded) UAC prompt into a
 /// privilege-escalation primitive. Defence: the sidecar must carry the SAME valid Authenticode signature as the
-/// running Foreman.exe. This auto-adapts: in a signed release build an attacker's unsigned/differently-signed
+/// running TraceBrake.exe. This auto-adapts: in a signed release build an attacker's unsigned/differently-signed
 /// sidecar is refused; in an unsigned dev build (no trust anchor exists) it allows, since dev isn't the threat
 /// model and the LPE targets the signed, branded release. The signer comparison is a pure, testable decision
 /// (<see cref="Decide"/>); the Authenticode extraction is Windows interop (<see cref="Verify"/>).
@@ -25,15 +25,15 @@ internal static class SidecarIntegrity
     public static (bool Trusted, string Reason) Decide(string? selfSigner, string? sidecarSigner)
     {
         if (selfSigner is null)
-            return (true, "Foreman itself is unsigned (dev build) — sidecar signature not enforced.");
+            return (true, "TraceBrake itself is unsigned (dev build) — sidecar signature not enforced.");
         if (sidecarSigner is null)
-            return (false, "the sidecar is unsigned or its Authenticode signature is invalid, but Foreman is signed.");
+            return (false, "the sidecar is unsigned or its Authenticode signature is invalid, but TraceBrake is signed.");
         if (!string.Equals(selfSigner, sidecarSigner, StringComparison.OrdinalIgnoreCase))
             return (false, "the sidecar is signed by a different publisher than Foreman.");
-        return (true, "sidecar Authenticode signature matches Foreman's publisher.");
+        return (true, "sidecar Authenticode signature matches TraceBrake's publisher.");
     }
 
-    /// <summary>Verifies the sidecar against the running Foreman.exe. Never throws.</summary>
+    /// <summary>Verifies the sidecar against the running TraceBrake.exe. Never throws.</summary>
     public static (bool Trusted, string Reason) Verify(string sidecarPath)
     {
         try
@@ -43,17 +43,17 @@ internal static class SidecarIntegrity
         }
         catch
         {
-            // If verification itself faults, fail CLOSED only when Foreman is signed; otherwise (dev) allow.
+            // If verification itself faults, fail CLOSED only when TraceBrake is signed; otherwise (dev) allow.
             var selfSigned = SafeVerifiedSigner(Environment.ProcessPath) is not null;
             return selfSigned
-                ? (false, "sidecar integrity check failed unexpectedly while Foreman is signed.")
-                : (true, "sidecar integrity check inconclusive; Foreman is unsigned (dev).");
+                ? (false, "sidecar integrity check failed unexpectedly while TraceBrake is signed.")
+                : (true, "sidecar integrity check inconclusive; TraceBrake is unsigned (dev).");
         }
     }
 
     private static string? SafeVerifiedSigner(string? p) { try { return VerifiedSignerThumbprint(p); } catch { return null; } }
 
-    /// <summary>True if the running Foreman.exe carries a valid Authenticode signature (a release build). When false
+    /// <summary>True if the running TraceBrake.exe carries a valid Authenticode signature (a release build). When false
     /// (an unsigned dev build) the signer-match gate is WAIVED, so a caller that grants real authority off the back of
     /// a verified sidecar must apply an additional safeguard (the desktop CU path holds an at-rest write/delete lock on
     /// its sidecar binary for exactly this reason).</summary>

@@ -5,7 +5,7 @@ using Foreman.Core.Health;
 namespace Foreman.App.Windows;
 
 /// <summary>
-/// The "Setup" dashboard tab: an at-a-glance checklist of Foreman's own posture — launch context, MCP,
+/// The "Setup" dashboard tab: an at-a-glance checklist of TraceBrake's own posture — launch context, MCP,
 /// extension, presence lock, vault, decoys, guardian, OS-log blackbox — with a one-line remedy per row.
 /// All judgement lives in <see cref="SetupHealth.Evaluate"/> (Core, tested); this view only renders. The
 /// snapshot provider is injected by the tray/App composition root so the view holds no service references.

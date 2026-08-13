@@ -22,7 +22,7 @@ namespace Foreman.App.ComputerUse;
 [SupportedOSPlatform("windows")]
 public sealed class CuDesktopPanicFloor
 {
-    /// <summary>Foreman's injection marker stamped into dwExtraInfo so our own release-all is recognisable as ours
+    /// <summary>TraceBrake's injection marker stamped into dwExtraInfo so our own release-all is recognisable as ours
     /// (INV-4 sub-classifies OUR injection; the kernel LLMHF_INJECTED flag is the primary human-vs-injected test).</summary>
     public const ulong ForemanMagic = 0x464F5245;   // "FORE"
 

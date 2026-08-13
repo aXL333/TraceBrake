@@ -1,12 +1,12 @@
 /**
- * Foreman LiveWeave — extension service worker.
+ * TraceBrake LiveWeave — extension service worker.
  *
- * Bridges the browser to the LOCAL Foreman desktop app over loopback HTTP (never the network). Pairs as the
- * `liveweave` harness (closed-loop challenge/response; the code never crosses the wire), then polls Foreman's
- * `liveweave_*` broker and renders Foreman-brokered edits into `liveweave.html` — a local, extension-owned
+ * Bridges the browser to the LOCAL TraceBrake desktop app over loopback HTTP (never the network). Pairs as the
+ * `liveweave` harness (closed-loop challenge/response; the code never crosses the wire), then polls TraceBrake's
+ * `liveweave_*` broker and renders TraceBrake-brokered edits into `liveweave.html` — a local, extension-owned
  * canvas. A page snapshot is read only after the operator invokes the action on that tab and chooses Edit.
  *
- * Split out from the Foreman Agent Safety extension so the page-builder feature lives on its own, with its own
+ * Split out from the TraceBrake extension so the page-builder feature lives on its own, with its own
  * pairing/token, separate from the safety watchdog arm.
  */
 import { loadSettings, saveSettings, onSettingsChanged } from './settings.js';
@@ -106,11 +106,11 @@ async function hmacHex(key, message) {
 
 async function pair(code, liveweaveDriver = cfg.liveweaveDriver) {
     const clean = (code || '').trim().toUpperCase();
-    if (!clean) return { ok: false, error: 'Enter the code shown in Foreman.' };
+    if (!clean) return { ok: false, error: 'Enter the code shown in TraceBrake.' };
     try {
         const cr = await loopbackFetch(`${base()}/pair/challenge`);
-        if (cr.status === 409) return { ok: false, error: 'No pairing window is open. Click "Pair browser extension" in Foreman first.' };
-        if (!cr.ok) return { ok: false, error: `Foreman returned ${cr.status} for the challenge.` };
+        if (cr.status === 409) return { ok: false, error: 'No pairing window is open. Click "Pair browser extension" in TraceBrake first.' };
+        if (!cr.ok) return { ok: false, error: `TraceBrake returned ${cr.status} for the challenge.` };
         const { challenge } = await cr.json();
 
         const response = await hmacHex(clean, challenge);
@@ -129,7 +129,7 @@ async function pair(code, liveweaveDriver = cfg.liveweaveDriver) {
         await refresh();
         return { ok: true };
     } catch (e) {
-        return { ok: false, error: `Could not reach Foreman at ${base()} — is it running? (${e})` };
+        return { ok: false, error: `Could not reach TraceBrake at ${base()} — is it running? (${e})` };
     }
 }
 
@@ -150,7 +150,7 @@ async function ensureMcpSession() {
 }
 
 // Single place that opens (or reuses) the MCP session and calls a tool. On any failure it drops the cached
-// session so the next call reopens — Foreman uses short-lived per-request sessions, so a stale id is expected.
+// session so the next call reopens — TraceBrake uses short-lived per-request sessions, so a stale id is expected.
 async function mcpCall(name, args = {}) {
     if (!cfg.token) return null;
     try {
@@ -168,7 +168,7 @@ async function mcpCall(name, args = {}) {
 
 const DEFAULT_CANVAS = {
     title: 'LiveWeave Canvas',
-    html: '<main style="font-family: system-ui, sans-serif; padding: 32px;"><h1>LiveWeave Canvas</h1><p>Ready for Foreman-brokered edits.</p></main>',
+    html: '<main style="font-family: system-ui, sans-serif; padding: 32px;"><h1>LiveWeave Canvas</h1><p>Ready for TraceBrake-brokered edits.</p></main>',
     css: '',
     projectId: '',
     sourceUrl: '',
@@ -486,9 +486,9 @@ async function operatorRequest(action, params = {}) {
             if (!project) return { ok: false, code: 'no_project', error: 'No LiveWeave project is active.' };
             if (!path || !instruction) return { ok: false, code: 'bad_prompt', error: 'Choose a page or element target and describe the change first.' };
             if (!/^[a-z0-9._:-]{1,80}$/.test(targetHarnessId) || targetHarnessId === 'any' || targetHarnessId === 'liveweave') {
-                return { ok: false, code: 'bad_harness', error: 'Choose a specific Foreman harness.' };
+                return { ok: false, code: 'bad_harness', error: 'Choose a specific TraceBrake harness.' };
             }
-            if (!cfg.token || !connected) return { ok: false, code: 'foreman_offline', error: 'Pair LiveWeave with Foreman before sending an agent edit.' };
+            if (!cfg.token || !connected) return { ok: false, code: 'foreman_offline', error: 'Pair LiveWeave with TraceBrake before sending an agent edit.' };
             if (cfg.liveweaveDriver !== targetHarnessId) {
                 cfg = { ...cfg, liveweaveDriver: targetHarnessId };
                 await saveSettings({ liveweaveDriver: targetHarnessId });
@@ -506,7 +506,7 @@ async function operatorRequest(action, params = {}) {
                 sourceOrigin: project.source?.url ? safeOrigin(project.source.url) : '',
                 selectionJson,
             });
-            if (!result?.ok) return { ok: false, code: 'agent_request_failed', error: result?.reason || lastMcpError || 'Foreman could not queue the edit request.' };
+            if (!result?.ok) return { ok: false, code: 'agent_request_failed', error: result?.reason || lastMcpError || 'TraceBrake could not queue the edit request.' };
             await chrome.storage.local.set({
                 liveweaveAgentEdit: {
                     requestId: result.requestId,
@@ -523,7 +523,7 @@ async function operatorRequest(action, params = {}) {
             const result = await mcpCall('liveweave_edit_request_result', { requestId });
             if (!result?.found) {
                 await chrome.storage.local.remove('liveweaveAgentEdit');
-                return { ok: false, code: 'request_not_found', error: result?.reason || lastMcpError || 'Foreman could not read the edit request.' };
+                return { ok: false, code: 'request_not_found', error: result?.reason || lastMcpError || 'TraceBrake could not read the edit request.' };
             }
             if (result.status !== 'pending') await chrome.storage.local.remove('liveweaveAgentEdit');
             return { ok: true, ...result };
@@ -887,7 +887,7 @@ function removeMarked(css, marker) {
 // Honest on-device model availability (was hardcoded 'unavailable'). Chrome's Prompt API is a document-context
 // API, so it is usually absent in the service worker — in which case we correctly report 'unavailable'. If a
 // future channel exposes it here (or an offscreen document is added), this reports the real state. Clamped by
-// Foreman's SanitizeNanoStatus to {available, downloadable, downloading, unavailable}.
+// TraceBrake's SanitizeNanoStatus to {available, downloadable, downloading, unavailable}.
 async function liveweaveTabInfo() {
     const { canvas } = await readCanvas();
     return {

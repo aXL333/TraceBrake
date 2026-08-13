@@ -4,7 +4,7 @@ using Foreman.Core.Models;
 namespace Foreman.Core.Security;
 
 /// <summary>
-/// Masks secret-shaped substrings in strings that LEAVE Foreman — disk persistence (events.log.jsonl),
+/// Masks secret-shaped substrings in strings that LEAVE TraceBrake — disk persistence (events.log.jsonl),
 /// MCP tool output, CSV export, clipboard/audit prompts, and client notifications.
 ///
 /// This is deliberately an EGRESS transform, never a construction-time one. The raw command line stays

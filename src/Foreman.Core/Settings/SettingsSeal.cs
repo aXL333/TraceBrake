@@ -7,7 +7,7 @@ namespace Foreman.Core.Settings;
 /// <summary>The result of checking settings.json's security subset against its sidecar seal.</summary>
 public enum SettingsSealVerdict
 {
-    /// <summary>Seal present and matches — the security posture is exactly what Foreman last wrote.</summary>
+    /// <summary>Seal present and matches — the security posture is exactly what TraceBrake last wrote.</summary>
     Sealed,
     /// <summary>Seal present but does NOT match — settings were edited by something other than Foreman.</summary>
     Tampered,
@@ -30,7 +30,7 @@ public enum SettingsSealVerdict
 ///
 /// Against the primary adversary — a monitored agent running as the SAME user — tampering cannot be PREVENTED:
 /// there is no privilege boundary, so the agent can read the install secret and recompute any seal. What IS
-/// achievable, and what this provides, is DETECTION. Foreman re-seals on every save (<see cref="Compute"/>), so
+/// achievable, and what this provides, is DETECTION. TraceBrake re-seals on every save (<see cref="Compute"/>), so
 /// any edit it did not make — another principal, accidental corruption, or a naive agent that flips a flag
 /// without re-sealing — is caught at load (<see cref="Verify"/>) and can be reverted + alerted. A durable OS-event
 /// witness distinguishes an established install from a genuine first run if the seal and recovery pair are deleted.
@@ -40,12 +40,8 @@ public enum SettingsSealVerdict
 public static class SettingsSeal
 {
     public const string LocalScheme = "l2:";
-    /// <summary>
-    /// Deterministic projection of the fields whose silent change weakens Foreman's posture (the presence lock,
-    /// log persistence/integrity, elevation, decoy auditing, MCP peer binding, disabled harnesses, emergency rule
-    /// set, per-harness Trust, and mutes). Order-independent so re-serialization can't cause false tamper.
-    /// </summary>
-    public static string SecurityProjection(ForemanSettings s)
+    /// <summary>Previous security projection, before editable universal Trust capability profiles were added.</summary>
+    public static string LegacySecurityProjectionV2(ForemanSettings s)
     {
         var projection = new
         {
@@ -63,7 +59,7 @@ public static class SettingsSeal
             decoyReadAudit  = s.DecoyCredentials.EnableReadAuditing,
             osEventLog      = s.OsEventLog.Enabled,
             // Desktop CU + Local Agent Host: a silent edit here grants desktop input authority or redirects which exe
-            // Foreman launches as the agent - seal them so any change flips the verdict to Tampered (revert + alert).
+            // TraceBrake launches as the agent - seal them so any change flips the verdict to Tampered (revert + alert).
             cuDesktop       = s.CuDesktopEnabled,
             cuDriverHost    = s.CuDriverHostEnabled,
             cuAutoGrant     = s.CuDesktopAutoGrant,
@@ -85,6 +81,54 @@ public static class SettingsSeal
             emergency       = s.EmergencyRuleIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
             trust           = s.HarnessTrust.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
                                             .Select(kv => $"{kv.Key.ToLowerInvariant()}={kv.Value}").ToArray(),
+            capabilities    = s.HarnessCapabilityRestrictions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                                            .Select(kv => $"{kv.Key.ToLowerInvariant()}={(int)kv.Value.ComputerUse}:{(int)kv.Value.BrowserUse}").ToArray(),
+            mutes           = s.Mutes.OrderBy(MuteKey, StringComparer.Ordinal).Select(MuteKey).ToArray(),
+        };
+        return JsonSerializer.Serialize(projection);
+    }
+
+    /// <summary>
+    /// Deterministic projection of the fields whose silent change weakens TraceBrake's posture, including the graded
+    /// universal Trust profiles. Order-independent so re-serialization cannot cause a false tamper verdict.
+    /// </summary>
+    public static string SecurityProjection(ForemanSettings s)
+    {
+        var projection = new
+        {
+            presenceEnabled = s.PresenceLock.Enabled,
+            presenceScope   = (int)s.PresenceLock.Scope,
+            presenceCred    = s.PresenceLock.CredentialId ?? "",
+            eventLogPersist = s.EventLogPersist,
+            hashChain       = s.LogIntegrity.HashChainEnabled,
+            runElevated     = s.RunElevated,
+            scanMcpTools    = s.ScanMcpTools,
+            monitorAll      = s.MonitorAllProcesses,
+            peerBinding     = s.McpPeerBindingEnforce,
+            autoExtPair     = s.AllowAutoExtensionPairing,
+            decoyEnabled    = s.DecoyCredentials.Enabled,
+            decoyReadAudit  = s.DecoyCredentials.EnableReadAuditing,
+            osEventLog      = s.OsEventLog.Enabled,
+            cuDesktop       = s.CuDesktopEnabled,
+            cuDriverHost    = s.CuDriverHostEnabled,
+            cuAutoGrant     = s.CuDesktopAutoGrant,
+            cuDriver        = s.CuDriver ?? "",
+            cuAgentCommand  = s.CuAgentCommand ?? "",
+            cuAgentArgs     = s.CuAgentArguments ?? "",
+            cuAgentWorkDir  = s.CuAgentWorkingDir ?? "",
+            adbEnabled      = s.AdbBridge.Enabled,
+            adbExecutable   = s.AdbBridge.ExecutablePath ?? "",
+            adbExecutableSha256 = s.AdbBridge.ExecutableSha256 ?? "",
+            adbDevices      = s.AdbBridge.EnrolledDeviceSerials
+                                .Select(static x => (x ?? string.Empty).Trim().ToLowerInvariant())
+                                .Where(static x => x.Length > 0)
+                                .Order(StringComparer.Ordinal)
+                                .ToArray(),
+            disabled        = s.DisabledHarnesses.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            emergency       = s.EmergencyRuleIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            trust           = s.HarnessTrust.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                                            .Select(kv => $"{kv.Key.ToLowerInvariant()}={kv.Value}").ToArray(),
+            universalTrust  = (s.UniversalTrust ?? new UniversalTrustSettings()).SecurityProjection(),
             capabilities    = s.HarnessCapabilityRestrictions.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
                                             .Select(kv => $"{kv.Key.ToLowerInvariant()}={(int)kv.Value.ComputerUse}:{(int)kv.Value.BrowserUse}").ToArray(),
             mutes           = s.Mutes.OrderBy(MuteKey, StringComparer.Ordinal).Select(MuteKey).ToArray(),
@@ -166,13 +210,19 @@ public static class SettingsSeal
         if (string.IsNullOrEmpty(storedSeal)) return SettingsSealVerdict.Unsealed;
         if (storedSeal.StartsWith(GuardianScheme, StringComparison.Ordinal)) return SettingsSealVerdict.Unsealed;
         if (storedSeal.StartsWith(LocalScheme, StringComparison.Ordinal))
-            return MacEquals(ComputeMac(SecurityProjection(loaded), secret), storedSeal[LocalScheme.Length..])
-                ? SettingsSealVerdict.Sealed
-                : SettingsSealVerdict.Tampered;
+        {
+            var mac = storedSeal[LocalScheme.Length..];
+            if (MacEquals(ComputeMac(SecurityProjection(loaded), secret), mac))
+                return SettingsSealVerdict.Sealed;
+            if (MacEquals(ComputeMac(LegacySecurityProjectionV2(loaded), secret), mac))
+                return SettingsSealVerdict.LegacySealed;
+            return SettingsSealVerdict.Tampered;
+        }
 
         if (storedSeal.Contains(':', StringComparison.Ordinal))
             return SettingsSealVerdict.Tampered;
         if (MacEquals(ComputeMac(SecurityProjection(loaded), secret), storedSeal) ||
+            MacEquals(ComputeMac(LegacySecurityProjectionV2(loaded), secret), storedSeal) ||
             MacEquals(ComputeMac(LegacySecurityProjectionV1(loaded), secret), storedSeal))
             return SettingsSealVerdict.LegacySealed;
         return SettingsSealVerdict.Tampered;

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Foreman.Core.Settings;
 
 namespace Foreman.Core.ComputerUse;
 
@@ -59,6 +60,12 @@ public sealed class CuBroker
     // so the operator can authorize e.g. {claude-code, codex} without opening it to every harness.)
     private volatile string[] _drivers = [];
     private const string OperatorMarker = "operator";
+
+    /// <summary>
+    /// App-wired universal Trust policy. Null preserves the legacy broker defaults for tests/headless hosts. The
+    /// callback is re-evaluated at delivery so a session lock or live policy edit cannot leave stale authority.
+    /// </summary>
+    public Func<CuAction, TrustCapabilityDecision>? CapabilityGate { get; set; }
 
     // Operator's pinned shared-attention tab (browser): the locked focus the extension reports when the operator
     // presses the pinned icon. Null = no pin. Drives the excursion gate in SubmitAsync.
@@ -172,6 +179,22 @@ public sealed class CuBroker
             }
         }
 
+        TrustCapabilityDecision? trustDecision = null;
+        if (!string.Equals(action.ByHarness, OperatorMarker, StringComparison.OrdinalIgnoreCase)
+            && CapabilityGate is { } capabilityGate)
+        {
+            try { trustDecision = capabilityGate(action); }
+            catch { trustDecision = new TrustCapabilityDecision(true, false, "Universal Trust policy could not be evaluated."); }
+            if (trustDecision.Blocked)
+            {
+                var denied = new CuBrokerItem(id, action, CuActionState.Blocked,
+                    CuVerdict.Block("broker", trustDecision.Reason), DateTimeOffset.UtcNow,
+                    Error: trustDecision.Reason, UpdatedAt: DateTimeOffset.UtcNow);
+                _items[id] = denied;
+                return denied;
+            }
+        }
+
         // Rate limit (Slice 2): a non-operator harness flooding actions faster than a human could pilot is Held
         // without even auditing -- defeats approval-fatigue + auditor-flood. The operator's manual actions are exempt.
         if (!string.Equals(action.ByHarness, OperatorMarker, StringComparison.OrdinalIgnoreCase)
@@ -184,6 +207,25 @@ public sealed class CuBroker
                 PanicEpoch: Interlocked.Read(ref _panicEpoch));
             _items[id] = throttled;
             return throttled;
+        }
+
+        // APK approval is bound to the exact local file TraceBrake observed, not merely an agent-supplied path. This
+        // happens after the harness rate gate (hashing can be expensive) but before auditing/approval. The executor
+        // re-pins and re-verifies the canonical path + size + SHA-256 immediately before adb install.
+        if (action.Modality == CuModality.Android
+            && string.Equals(action.Verb, "install", StringComparison.OrdinalIgnoreCase))
+        {
+            var prepared = await AdbBridgeExecutor.PrepareInstallActionAsync(action, ct).ConfigureAwait(false);
+            if (prepared.Action is null)
+            {
+                var denied = new CuBrokerItem(id, action, CuActionState.Blocked,
+                    CuVerdict.Block("broker", prepared.Error ?? "APK preparation failed"),
+                    DateTimeOffset.UtcNow, Error: prepared.Error ?? "APK preparation failed.",
+                    UpdatedAt: DateTimeOffset.UtcNow);
+                _items[id] = denied;
+                return denied;
+            }
+            action = prepared.Action;
         }
 
         // Capture the panic epoch at ADMISSION and stamp it on BOTH the Auditing placeholder and the final item. If a
@@ -215,11 +257,21 @@ public sealed class CuBroker
             if (exVerdict.Decision != CuDecision.Allow) state = CuActionState.Held;
         }
 
+        // Universal Trust is an additional ceiling over the auditor. Ask and unlocked-only-while-locked may only
+        // downgrade Allow -> Held; they never relax an auditor Block/Hold.
+        if (state == CuActionState.Approved
+            && (action.RequiresOperatorApproval || trustDecision?.RequiresApproval == true))
+        {
+            state = CuActionState.Held;
+            verdict = CuVerdict.Hold("trust-policy",
+                trustDecision?.Reason ?? "Per-harness policy requires operator approval.");
+        }
+
         // INV-15 (propose-not-act default): a Desktop action from a driver lands HELD for the operator even on an
         // auditor Allow, UNLESS auto-grant is enabled AND still within its bounds (a per-session action budget + an
         // operator-idle gate), so an opted-in auto-grant can never become unbounded standing unattended autonomy. The
         // operator's own actions skip this entirely.
-        if (action.Modality == CuModality.Desktop && state == CuActionState.Approved
+        if (CapabilityGate is null && action.Modality == CuModality.Desktop && state == CuActionState.Approved
             && !string.Equals(action.ByHarness, OperatorMarker, StringComparison.OrdinalIgnoreCase))
         {
             var boundsReason = string.Empty;
@@ -238,7 +290,7 @@ public sealed class CuBroker
 
         // Android state changes are propose-not-act: even a local Allow must be explicitly approved by the operator.
         // Observe-only devices/screenshot/ui_dump/logcat can use the audited fast path.
-        if (action.Modality == CuModality.Android && state == CuActionState.Approved
+        if (CapabilityGate is null && action.Modality == CuModality.Android && state == CuActionState.Approved
             && CuVerbs.IsStateChanging(action.Verb))
         {
             state = CuActionState.Held;
@@ -327,6 +379,36 @@ public sealed class CuBroker
                     UpdatedAt = DateTimeOffset.UtcNow,
                 };
                 continue;
+            }
+
+            // Re-evaluate universal Trust at DELIVERY. Never revokes even an earlier operator approval; Ask or an
+            // unlocked-only policy after Windows locks re-holds unattended work, but a fresh explicit approval wins.
+            if (!string.Equals(item.Action.ByHarness, OperatorMarker, StringComparison.OrdinalIgnoreCase)
+                && CapabilityGate is { } capabilityGate)
+            {
+                TrustCapabilityDecision decision;
+                try { decision = capabilityGate(item.Action); }
+                catch { decision = new TrustCapabilityDecision(true, false, "Universal Trust policy could not be re-evaluated."); }
+                if (decision.Blocked)
+                {
+                    _items[item.ActionId] = item with
+                    {
+                        State = CuActionState.Rejected,
+                        Error = decision.Reason,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    continue;
+                }
+                if (decision.RequiresApproval && !item.OperatorApproved)
+                {
+                    _items[item.ActionId] = item with
+                    {
+                        State = CuActionState.Held,
+                        Verdict = CuVerdict.Hold("trust-policy", decision.Reason),
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    continue;
+                }
             }
 
             var deliver = item;
@@ -629,7 +711,7 @@ public sealed class CuBroker
     public bool AllowTabOverride { get; set; }
 
     /// <summary>Fired when an action is handed to the executor (moves to Executing). The App raises the operator
-    /// HUD overlay ("CLAUDE DRIVING THRU FOREMAN") from it. Invoked on the poll thread — marshal to the UI thread.</summary>
+    /// HUD overlay ("CLAUDE DRIVING THRU TRACEBRAKE") from it. Invoked on the poll thread — marshal to the UI thread.</summary>
     public Action<CuBrokerItem>? OnExecuting { get; set; }
 
     // The off-focus verdict for a state-changing action, or null when there is no excursion (on-focus / read-only /
@@ -673,14 +755,14 @@ public sealed class CuBroker
     /// <summary>Fired when desktop cursor ownership changes (for the Shared-Monopilot cursor in a later slice).</summary>
     public Action<CuBrokerItem, bool>? OnHandoff { get; set; }
 
-    /// <summary>Binds (or clears, with null) the single active CU window. REFUSES Foreman's own windows. Bumps the
+    /// <summary>Binds (or clears, with null) the single active CU window. REFUSES TraceBrake's own windows. Bumps the
     /// Epoch so any action approved against a prior binding is re-held at delivery. The caller presence-gates the bind.</summary>
     public (bool Ok, string Reason) SetActiveWindow(CuWindowRef? w, string? bindToken = null)
     {
         if (w is not null)
         {
             if (w.OwnerPid == Environment.ProcessId)
-                return (false, "Refused: cannot bind Foreman's own window as a CU target.");
+                return (false, "Refused: cannot bind TraceBrake's own window as a CU target.");
             // INV-17: a bind must carry a live one-time token the presence gate minted on a real operator tap, so a
             // caller cannot hand the broker a fabricated CuWindowRef for a window the operator never chose.
             if (BindTokenValidator is { } validate && !validate(bindToken))

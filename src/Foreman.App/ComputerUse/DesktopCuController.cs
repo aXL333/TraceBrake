@@ -16,12 +16,12 @@ namespace Foreman.App.ComputerUse;
 
 /// <summary>
 /// Launches and supervises the medium-IL desktop computer-use sidecar (<c>Foreman.CuSidecar.exe</c>) and owns the
-/// duplex control pipe to it. Unlike the elevated ETW sidecar, this one runs at the SAME integrity as Foreman - CU
+/// duplex control pipe to it. Unlike the elevated ETW sidecar, this one runs at the SAME integrity as TraceBrake - CU
 /// needs isolation (one auditable input source), never elevation.
 ///
 /// Trust rebuild (spec INV-6): because the sidecar is same-user / same-IL, the elevation test that guards the ETW
 /// pipe does not apply. Instead the connecting client must clear THREE gates before any frame is trusted:
-///   1. Integrity:   the exe carries Foreman's Authenticode signature, verified under a write/delete-denying handle
+///   1. Integrity:   the exe carries TraceBrake's Authenticode signature, verified under a write/delete-denying handle
 ///                   held across verify -> launch, and re-verified against the connected image. On UNSIGNED dev
 ///                   builds the signer match is waived (no trust anchor exists), so the binary is additionally held
 ///                   write/delete-locked AT REST for the whole app lifetime (<see cref="PinBinaryAtRest"/>) to stop a
@@ -63,7 +63,7 @@ public sealed class DesktopCuController : IDisposable
     /// a full panic halt. The controller already hard-kills the offending sidecar locally before raising this.</summary>
     public Action? OnVerificationFailure { get; set; }
 
-    /// <summary>The staged sidecar path (under the app dir, beside Foreman's own binaries).</summary>
+    /// <summary>The staged sidecar path (under the app dir, beside TraceBrake's own binaries).</summary>
     public static string SidecarPath() => Path.Combine(AppContext.BaseDirectory, "cu-sidecar", "Foreman.CuSidecar.exe");
 
     /// <summary>
@@ -398,9 +398,9 @@ public sealed class DesktopCuController : IDisposable
                 !string.Equals(Path.GetFullPath(img), Path.GetFullPath(exe), StringComparison.OrdinalIgnoreCase))
             { reason = "client image is not the verified sidecar"; return false; }
 
-            // Parent must be Foreman (spec INV-6) - defense in depth behind the PID pin.
+            // Parent must be TraceBrake (spec INV-6) - defense in depth behind the PID pin.
             if (!TryGetParentPid(h, out var ppid) || ppid != Environment.ProcessId)
-            { reason = $"client parent {ppid} != Foreman {Environment.ProcessId}"; return false; }
+            { reason = $"client parent {ppid} != TraceBrake {Environment.ProcessId}"; return false; }
 
             // Re-verify the running image's backing file (belt-and-suspenders against a swap between launch and connect).
             var (trusted, why) = SidecarIntegrity.Verify(img);

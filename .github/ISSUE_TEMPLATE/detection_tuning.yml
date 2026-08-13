@@ -25,7 +25,7 @@ body:
   - type: textarea
     id: why
     attributes:
-      label: Why should Foreman Agent Safety treat this differently?
+      label: Why should TraceBrake treat this differently?
     validations:
       required: true
   - type: input

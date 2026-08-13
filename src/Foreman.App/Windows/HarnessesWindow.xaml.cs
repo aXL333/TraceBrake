@@ -1,3 +1,4 @@
+using Foreman.App.Security;
 using Foreman.Core.Models;
 using Foreman.Core.Power;
 using Foreman.Core.Settings;
@@ -268,6 +269,7 @@ public partial class HarnessesWindow : UserControl
     /// <summary>Persists the current toggles + custom exes. Public so the host can save on navigate-away.</summary>
     public async Task<bool> SaveChanges()
     {
+        using var provenance = SettingsChangeUiScope.Begin("save-harness-inventory");
         // Presence lock (P3): newly disabling a harness's monitoring is a weakening — gate before persist; deny reverts.
         var newlyDisabled = _items.Where(v => !v.IsMonitored).Select(v => v.Id)
             .Where(id => !_settings.DisabledHarnesses.Contains(id))

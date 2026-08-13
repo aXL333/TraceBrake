@@ -72,7 +72,7 @@ public sealed class McpServerHost : IAsyncDisposable
         {
             // Loopback-only by design: ListenLocalhost binds 127.0.0.1 and [::1] *only*, never a routable
             // interface — the MCP/health server is never remotely reachable. This is a deliberate trust
-            // boundary (see SECURITY.md), and it also keeps Foreman off the AV radar (a localhost listener
+            // boundary (see SECURITY.md), and it also keeps TraceBrake off the AV radar (a localhost listener
             // needs no firewall rule and raises no inbound prompt). Do not switch to ListenAnyIP.
             opts.ListenLocalhost(_settings.McpPort);
         });
@@ -113,7 +113,7 @@ public sealed class McpServerHost : IAsyncDisposable
         // ── MCP auth gate ────────────────────────────────────────────────────────
         // localhost is not an authorization boundary on a shared box. Require the bearer
         // token (and reject cross-origin/browser requests) on /mcp so a random local process
-        // or a drive-by browser POST cannot drive Foreman's tools. /health stays open.
+        // or a drive-by browser POST cannot drive TraceBrake's tools. /health stays open.
         _authToken.WriteSetupFile(_settings.McpPort);
         _app.Use(async (ctx, next) =>
         {
@@ -156,7 +156,7 @@ public sealed class McpServerHost : IAsyncDisposable
                         MaybeReportStaleToken(presented);   // surface "your saved token went stale — reconnect"
                         ctx.Response.Headers.WWWAuthenticate = "Bearer";
                         await Deny(ctx, StatusCodes.Status401Unauthorized,
-                            "A valid Foreman MCP token is required. See mcp-setup.txt in %LocalAppData%\\Foreman.").ConfigureAwait(false);
+                            "A valid TraceBrake MCP token is required. See mcp-setup.txt in %LocalAppData%\\TraceBrake.").ConfigureAwait(false);
                         return;
                     }
                     // Peer-PID binding (second factor): a per-harness token must be presented BY that harness's
@@ -240,11 +240,6 @@ public sealed class McpServerHost : IAsyncDisposable
             if (!result.Ok)
                 return Results.Json(new { ok = false, reason = result.Reason }, statusCode: StatusCodes.Status403Forbidden);
 
-            if (!_settings.PairedExtensionOrigins.Contains(result.Origin!, StringComparer.OrdinalIgnoreCase))
-            {
-                _settings.PairedExtensionOrigins.Add(result.Origin!);
-                try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
-            }
             // Pairing both allow-lists the origin AND issues a scoped token — /mcp still requires a bearer, and
             // the extension has none until now. Default harness is browser-extension; LiveWeave sends harnessId=liveweave.
             var harnessId = string.IsNullOrWhiteSpace(harnessIdBody) ? "browser-extension" : harnessIdBody.Trim();
@@ -253,6 +248,13 @@ public sealed class McpServerHost : IAsyncDisposable
             {
                 return Results.Json(new { ok = false, reason = "Unsupported harnessId for extension pairing." },
                     statusCode: StatusCodes.Status403Forbidden);
+            }
+            if (!_settings.PairedExtensionOrigins.Contains(result.Origin!, StringComparer.OrdinalIgnoreCase))
+            {
+                _settings.PairedExtensionOrigins.Add(result.Origin!);
+                using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
+                    SettingsChangeOrigin.AuthenticatedMcp, harnessId, "complete-extension-pairing"));
+                try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
             }
             var token = _authToken.MintHarnessToken(harnessId);
             return Results.Json(new { ok = true, origin = result.Origin, token, harnessId });
@@ -296,6 +298,8 @@ public sealed class McpServerHost : IAsyncDisposable
             if (!_settings.PairedExtensionOrigins.Contains(result.Origin!, StringComparer.OrdinalIgnoreCase))
             {
                 _settings.PairedExtensionOrigins.Add(result.Origin!);
+                using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
+                    SettingsChangeOrigin.AuthenticatedMcp, harnessId, "auto-pair-extension"));
                 try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
             }
             var token = _authToken.MintHarnessToken(harnessId);
@@ -374,10 +378,10 @@ public sealed class McpServerHost : IAsyncDisposable
     // secret usually was NOT rotated). Either way keep the reconnect fix and the forged-token possibility.
     public static string BuildStaleTokenNotice(string id, bool secretRecentlyRotated) =>
         secretRecentlyRotated
-            ? $"Harness '{id}' presented a Foreman MCP token this server can't validate. Foreman's token secret " +
+            ? $"Harness '{id}' presented a TraceBrake MCP token this server can't validate. TraceBrake's token secret " +
               $"was rotated recently, so '{id}'s saved token is stale. Open Connect Agent and reconnect '{id}' to " +
               "re-issue its token. If you didn't expect this, it could be a forged token from another local process."
-            : $"Foreman can't validate '{id}'s saved token. Open Connect Agent and reconnect '{id}' to re-issue it. " +
+            : $"TraceBrake can't validate '{id}'s saved token. Open Connect Agent and reconnect '{id}' to re-issue it. " +
               "If you didn't expect this, it could be a forged token from another local process.";
 
     private static bool IsExtensionHarness(string? harnessId) =>
@@ -389,6 +393,8 @@ public sealed class McpServerHost : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(origin)) return;
         if (_settings.PairedExtensionOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return;
         _settings.PairedExtensionOrigins.Add(origin);
+        using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
+            SettingsChangeOrigin.AuthenticatedMcp, "browser-extension", "remember-paired-origin"));
         try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
     }
 
@@ -411,9 +417,7 @@ public sealed class McpServerHost : IAsyncDisposable
     {
         try
         {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Foreman");
+            var dir = Foreman.Core.ProductIdentity.LocalDataRoot;
             Directory.CreateDirectory(dir);
             // Redact before persisting. This is the lone disk sink that handled an agent-influenced exception
             // (a JSON-RPC body / tool arg can ride into ex.Message/inner exceptions); every other egress sink

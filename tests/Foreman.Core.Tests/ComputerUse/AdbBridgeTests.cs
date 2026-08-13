@@ -16,6 +16,7 @@ public sealed class AdbBridgeTests
         public bool IsAvailable { get; set; } = true;
         public bool Cancelled { get; private set; }
         public List<IReadOnlyList<string>> Calls { get; } = [];
+        public List<TimeSpan> Timeouts { get; } = [];
         public Queue<AdbCommandResult> Results { get; } = [];
         public Action<IReadOnlyList<string>>? OnRun { get; set; }
 
@@ -26,6 +27,7 @@ public sealed class AdbBridgeTests
             CancellationToken ct = default)
         {
             Calls.Add(arguments.ToArray());
+            Timeouts.Add(timeout);
             OnRun?.Invoke(arguments);
             return Task.FromResult(Results.Count > 0
                 ? Results.Dequeue()
@@ -106,6 +108,44 @@ public sealed class AdbBridgeTests
         Assert.Equal(CuActionState.Approved, codex.State);
         Assert.Equal(CuActionState.Approved, claude.State);
         Assert.Equal(CuActionState.Blocked, cursor.State);
+    }
+
+    [Fact]
+    public async Task Broker_Install_FromEveryApprovedHarness_IsFingerprintBoundAndHeld()
+    {
+        var apk = TempApk("approved package bytes");
+        try
+        {
+            var broker = new CuBroker(new Allow());
+            broker.SetDrivers(["codex", "claude-code"]);
+            broker.SetAndroidDevices(["device-1"]);
+            var claimedHash = new string('0', 64);
+
+            var codex = await broker.SubmitAsync(Android("install", new()
+            {
+                ["serial"] = "device-1",
+                ["apkPath"] = apk,
+                ["apkSha256"] = claimedHash,
+                ["replace"] = "true",
+            }, "codex"), new CuContext("codex"));
+            var claude = await broker.SubmitAsync(Android("install", new()
+            {
+                ["serial"] = "device-1",
+                ["apkPath"] = apk,
+            }, "claude-code"), new CuContext("claude-code"));
+
+            Assert.Equal(CuActionState.Held, codex.State);
+            Assert.Equal(CuActionState.Held, claude.State);
+            Assert.NotEqual(claimedHash, codex.Action.Arg("apkSha256"));
+            Assert.Equal(AdbProcessRunner.ComputeSha256(apk), codex.Action.Arg("apkSha256"));
+            Assert.Equal("true", codex.Action.Arg("replace"));
+            Assert.Equal("false", claude.Action.Arg("replace"));
+            Assert.Empty(broker.Claim(5, CuModality.Android));
+        }
+        finally
+        {
+            File.Delete(apk);
+        }
     }
 
     [Fact]
@@ -207,6 +247,130 @@ public sealed class AdbBridgeTests
     }
 
     [Fact]
+    public async Task Executor_Install_UsesPinnedPackageAndFixedOptions()
+    {
+        var apk = TempApk("installable package bytes");
+        try
+        {
+            var prepared = await AdbBridgeExecutor.PrepareInstallActionAsync(Android("install", new()
+            {
+                ["serial"] = "device-1",
+                ["apkPath"] = apk,
+                ["replace"] = "true",
+                ["allowDowngrade"] = "false",
+                ["grantPermissions"] = "true",
+            }));
+            Assert.NotNull(prepared.Action);
+
+            var runner = new FakeRunner();
+            runner.Results.Enqueue(new AdbCommandResult(0, Encoding.UTF8.GetBytes("device\n"), ""));
+            runner.Results.Enqueue(new AdbCommandResult(0, Encoding.UTF8.GetBytes("Success\n"), ""));
+            using var executor = new AdbBridgeExecutor(
+                AdbBridgeOptions.Create(
+                    @"C:\Android\adb.exe",
+                    ["device-1"],
+                    installTimeout: TimeSpan.FromMinutes(4)),
+                runner);
+            var item = new CuBrokerItem("a1", prepared.Action!,
+                CuActionState.Executing, null, DateTimeOffset.UtcNow);
+
+            var result = await executor.ExecuteAsync(item);
+
+            Assert.True(result.Ok, result.Error);
+            Assert.Equal(["-s", "device-1", "get-state"], runner.Calls[0]);
+            Assert.Equal(
+                ["-s", "device-1", "install", "-r", "-g", prepared.Action!.Arg("apkPath")],
+                runner.Calls[1]);
+            Assert.Equal(TimeSpan.FromMinutes(4), runner.Timeouts[1]);
+            Assert.Contains("\"installed\":true", System.Text.Json.JsonSerializer.Serialize(result.Result));
+        }
+        finally
+        {
+            File.Delete(apk);
+        }
+    }
+
+    [Fact]
+    public async Task Executor_Install_RejectsSameSizePackageSwapAfterApproval()
+    {
+        var apk = TempApk("package-version-one");
+        try
+        {
+            var broker = new CuBroker(new Allow());
+            broker.SetDriver("codex");
+            broker.SetAndroidDevices(["device-1"]);
+            var held = await broker.SubmitAsync(Android("install", new()
+            {
+                ["serial"] = "device-1",
+                ["apkPath"] = apk,
+            }), new CuContext("codex"));
+            Assert.Equal(CuActionState.Held, held.State);
+
+            // This is the bypass the fingerprint must close: keep the approved path and size, replace only the bytes.
+            File.WriteAllText(apk, "package-evil-000000");
+            Assert.Equal(held.Action.Arg("apkBytes"), new FileInfo(apk).Length.ToString());
+            Assert.True(broker.ApproveHeld(held.ActionId).Ok);
+
+            var runner = new FakeRunner();
+            runner.Results.Enqueue(new AdbCommandResult(0, Encoding.UTF8.GetBytes("device\n"), ""));
+            using var executor = new AdbBridgeExecutor(
+                AdbBridgeOptions.Create(@"C:\Android\adb.exe", ["device-1"]),
+                runner);
+            var result = await executor.ExecuteAsync(broker.Claim(1, CuModality.Android).Single());
+
+            Assert.False(result.Ok);
+            Assert.Contains("contents changed", result.Error, StringComparison.OrdinalIgnoreCase);
+            Assert.Single(runner.Calls); // get-state ran; adb install never received the swapped package.
+        }
+        finally
+        {
+            File.Delete(apk);
+        }
+    }
+
+    [Theory]
+    [InlineData("not-an-apk.txt", "false")]
+    [InlineData("package.apk", "sometimes")]
+    public async Task Broker_Install_InvalidPackageOrFlag_FailsClosed(string fileName, string replace)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"foreman-{Guid.NewGuid():N}-{fileName}");
+        File.WriteAllText(path, "package bytes");
+        try
+        {
+            var broker = new CuBroker(new Allow());
+            broker.SetDriver("codex");
+            broker.SetAndroidDevices(["device-1"]);
+
+            var item = await broker.SubmitAsync(Android("install", new()
+            {
+                ["serial"] = "device-1",
+                ["apkPath"] = path,
+                ["replace"] = replace,
+            }), new CuContext("codex"));
+
+            Assert.Equal(CuActionState.Blocked, item.State);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task PrepareInstall_WindowsUncPackage_IsRejectedBeforeNetworkAccess()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var prepared = await AdbBridgeExecutor.PrepareInstallActionAsync(Android("install", new()
+        {
+            ["apkPath"] = @"\\untrusted.invalid\drop\payload.apk",
+        }));
+
+        Assert.Null(prepared.Action);
+        Assert.Contains("local drive", prepared.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Executor_PanicBetweenStateCheckAndAction_StopsBeforeSecondAdbCall()
     {
         var halted = false;
@@ -299,5 +463,12 @@ public sealed class AdbBridgeTests
         Assert.True(runner.IsAvailable);
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("adb-runner-ok", Encoding.UTF8.GetString(result.StandardOutput));
+    }
+
+    private static string TempApk(string contents)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"foreman-{Guid.NewGuid():N}.apk");
+        File.WriteAllText(path, contents);
+        return path;
     }
 }

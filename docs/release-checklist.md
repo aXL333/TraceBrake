@@ -1,4 +1,4 @@
-# Foreman Agent Safety Release Checklist
+# TraceBrake Release Checklist
 
 Use this before publishing a public binary release.
 
@@ -22,7 +22,7 @@ Only publish from `main` after that candidate passes the checks below.
 - Verify `/health` is reachable and `/mcp` rejects missing or wrong bearer tokens.
 - Verify a connected Claude Code or Codex session appears in the dashboard.
 - Verify Ask Harness delivery for at least one connected client.
-- Verify MCP inventory treats Foreman Agent Safety's own `foreman` loopback server as informational.
+- Verify MCP inventory treats TraceBrake's own `foreman` loopback server as informational.
 - Capture fresh screenshots for README/release notes.
 - Attach SHA-256 checksums to the release.
 - State clearly whether the installer is signed or unsigned (see **Code Signing** below).
@@ -64,12 +64,12 @@ the only $0 path that produces a real signature whose reputation transfers acros
    timestamping in the policy** — signatures must outlive the (short-lived) cert.
 3. Create **two artifact configurations**:
    - **App** (`SIGNPATH_APP_ARTIFACT_CONFIG_SLUG`): input is the uploaded `publish` folder (a zip). Sign
-     `Foreman.exe`, `sidecar/Foreman.EtwSidecar.exe`, `guardian/Foreman.Guardian.exe`,
+     `TraceBrake.exe`, `sidecar/Foreman.EtwSidecar.exe`, `guardian/Foreman.Guardian.exe`,
      `cu-sidecar/Foreman.CuSidecar.exe`, and `cu-pilot/Foreman.CuPilot.exe`; pass everything else through.
      Every inner PE must be signed before the installer is built around it. The workflow verifies this and fails
      before packaging if the external SignPath configuration omitted one.
    - **Installer** (`SIGNPATH_INSTALLER_ARTIFACT_CONFIG_SLUG`): input is the single
-     `Foreman-Agent-Safety-Setup-*.exe`; sign it.
+     `TraceBrake-Setup-*.exe`; sign it.
 4. Generate a SignPath **API token**.
 
 ### GitHub configuration
@@ -110,7 +110,7 @@ which code signing (which answers "who published this?") does not.
 
 - **No setup.** It has no secrets or variables to configure and runs on every release, signed or unsigned. It
   runs after the SignPath steps, so when signing is on it attests the final signed bytes.
-- **What is attested:** the installer plus all five payload binaries (`Foreman.exe`, ETW sidecar, Guardian,
+- **What is attested:** the installer plus all five payload binaries (`TraceBrake.exe`, ETW sidecar, Guardian,
   desktop-CU sidecar, and Local Agent Host pilot), so a user can verify either the download or an installed file.
 - **Nothing is attached to the Release.** GitHub stores the attestation; verification fetches it by digest.
 - **Verify a download or an installed file:**

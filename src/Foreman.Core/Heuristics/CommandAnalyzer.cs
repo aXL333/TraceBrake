@@ -127,7 +127,7 @@ public sealed class CommandAnalyzer
     private static RuleMatch DecoySentinelMatch() => new(
         "cred-040",
         "decoy credential sentinel observed",
-        "A Foreman decoy (canary) credential's PER-INSTALL sentinel appeared in a command line. Nothing legitimate ever handles a decoy you planted as bait, so a process read one of the fake credential files and is now staging or exfiltrating its value — the highest-confidence sign of an active credential harvester (and the random token means it couldn't have been pre-scrubbed from knowledge of Foreman's binary).",
+        "A TraceBrake decoy (canary) credential's PER-INSTALL sentinel appeared in a command line. Nothing legitimate ever handles a decoy you planted as bait, so a process read one of the fake credential files and is now staging or exfiltrating its value — the highest-confidence sign of an active credential harvester (and the random token means it couldn't have been pre-scrubbed from knowledge of TraceBrake's binary).",
         "Treat this as an active credential-theft incident. Identify the process handling the decoy and what it did with it. Real credentials adjacent to the decoy paths should be considered targeted: rotate them. Preserve the event for investigation.",
         ForemanSeverity.Critical,
         "cred",

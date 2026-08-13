@@ -11,7 +11,7 @@ using Foreman.Core.ComputerUse;
 namespace Foreman.App.ComputerUse;
 
 /// <summary>
-/// Developer on-device smoke test for the desktop CU injector spine (run via <c>Foreman.exe --cu-smoketest</c>).
+/// Developer on-device smoke test for the desktop CU injector spine (run via <c>TraceBrake.exe --cu-smoketest</c>).
 /// It drives the REAL path - launch Notepad, bind its window, start + handshake the medium-IL sidecar, then
 /// <see cref="DesktopCuController.ExecuteAsync"/> a "type" gesture (the controller independently verifies, INV-5, that
 /// the input landed in the bound foreground window) - and then a PANIC test: it sets the shared halt byte and confirms
@@ -48,7 +48,7 @@ internal static class CuSmokeTest
     {
         var sb = new StringBuilder();
         void Log(string m) => sb.AppendLine(m);
-        Log("=== Foreman desktop-CU injector smoke test ===");
+        Log("=== TraceBrake desktop-CU injector smoke test ===");
         Log($"time(utc-ish via Stopwatch only); pid={Environment.ProcessId}; baseDir={AppContext.BaseDirectory}");
         Log($"sidecar path: {DesktopCuController.SidecarPath()} (exists={File.Exists(DesktopCuController.SidecarPath())})");
         Log("");
@@ -188,7 +188,7 @@ internal static class CuSmokeTest
     {
         var sb = new StringBuilder();
         void Log(string m) => sb.AppendLine(m);
-        Log("=== Foreman desktop-CU END-TO-END smoke test (propose -> Held -> approve -> pump -> inject) ===");
+        Log("=== TraceBrake desktop-CU END-TO-END smoke test (propose -> Held -> approve -> pump -> inject) ===");
         Log($"sidecar: {DesktopCuController.SidecarPath()} (exists={File.Exists(DesktopCuController.SidecarPath())})");
         Log("");
 
@@ -301,7 +301,7 @@ internal static class CuSmokeTest
         const string drive = "s:\\";
         var sb = new StringBuilder();
         void Log(string m) => sb.AppendLine(m);
-        Log("=== Foreman desktop-CU drives File Explorer to S: (full audited chain) ===");
+        Log("=== TraceBrake desktop-CU drives File Explorer to S: (full audited chain) ===");
 
         DesktopCuController? ctl = null;
         CuSharedPanicFlag? flag = null;
@@ -417,7 +417,7 @@ internal static class CuSmokeTest
     {
         var sb = new StringBuilder();
         void Log(string m) => sb.AppendLine(m);
-        Log("=== Foreman desktop-CU HUD occlusion-ack plumbing test (INV-18, on-device) ===");
+        Log("=== TraceBrake desktop-CU HUD occlusion-ack plumbing test (INV-18, on-device) ===");
         CuOverlayWindow? hud = null;
         try
         {

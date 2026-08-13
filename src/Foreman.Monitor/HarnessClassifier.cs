@@ -121,6 +121,21 @@ public static class HarnessClassifier
     {
         var nameLower = record.Name.ToLowerInvariant();
         var cmdLower  = record.CommandLine.ToLowerInvariant();
+        var pathLower = record.ExecutablePath.Replace('/', '\\').ToLowerInvariant();
+
+        // Desktop Claude's browser integration deliberately uses a generic executable name and can outlive the
+        // visible app by days. Attribute only the high-confidence vendor-owned path/command combination; matching
+        // every chrome-native-host.exe would fold unrelated extensions into Claude's tree.
+        const string claudeNativeHost = @"\appdata\roaming\claude\chromenativehost\chrome-native-host.exe";
+        if (nameLower == "chrome-native-host.exe"
+            && (pathLower.EndsWith(claudeNativeHost, StringComparison.Ordinal)
+                || cmdLower.Contains(claudeNativeHost, StringComparison.Ordinal)))
+        {
+            record.HarnessType = "claude-code";
+            if (disabledHarnesses is null || !disabledHarnesses.Contains(record.HarnessType))
+                record.IsHarness = true;
+            return;
+        }
 
         foreach (var (exes, nodeMarkers, pyMarkers, id) in _rules)
         {

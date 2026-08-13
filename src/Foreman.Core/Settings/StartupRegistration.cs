@@ -1,9 +1,10 @@
 using System.IO;
+using Foreman.Core;
 
 namespace Foreman.Core.Settings;
 
 /// <summary>
-/// Pure logic for the "start Foreman when the user signs in" registration —
+/// Pure logic for the "start TraceBrake when the user signs in" registration —
 /// building, parsing, and repairing the HKCU Run value. The registry itself is
 /// the single source of truth for whether the feature is on (no settings field),
 /// so the JSON settings and the OS can never disagree. The actual registry I/O
@@ -13,7 +14,7 @@ namespace Foreman.Core.Settings;
 public static class StartupRegistration
 {
     /// <summary>Value name under HKCU\Software\Microsoft\Windows\CurrentVersion\Run.</summary>
-    public const string RunValueName = "Foreman Agent Safety";
+    public const string RunValueName = "TraceBrake";
 
     /// <summary>Older public startup value name, kept so upgrades preserve the user's setting.</summary>
     public const string LegacyRunValueName = "Foreman";
@@ -21,11 +22,11 @@ public static class StartupRegistration
     /// <summary>
     /// Every older Run value name to clean up when managing the canonical entry. Includes the no-space variant
     /// "ForemanAgentSafety" that a prior build wrote: leaving it stranded a SECOND Run entry, so Windows launched
-    /// Foreman twice at sign-in. The single-instance mutex blocked the duplicate, but it cost a stray "already
+    /// TraceBrake twice at sign-in. The single-instance mutex blocked the duplicate, but it cost a stray "already
     /// running" prompt + a false "blocked duplicate" in the OS log every logon. <see cref="LegacyRunValueName"/>
     /// is included so callers can iterate this one list.
     /// </summary>
-    public static readonly string[] LegacyRunValueNames = { LegacyRunValueName, "ForemanAgentSafety" };
+    public static readonly string[] LegacyRunValueNames = { LegacyRunValueName, "ForemanAgentSafety", "Foreman Agent Safety" };
 
     /// <summary>Relative registry path of the per-user Run key.</summary>
     public const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -56,8 +57,9 @@ public static class StartupRegistration
     /// <summary>
     /// True when the registered entry should be rewritten to point at the running exe.
     /// Heals a moved/renamed install (registered exe no longer exists) and malformed
-    /// values, but never hijacks a registration whose target is still present — so a
-    /// Debug build run from bin\ won't steal the entry from a published install.
+    /// values. An existing legacy Foreman.exe is also replaced when the current product
+    /// is TraceBrake.exe; other existing targets remain authoritative, so a Debug build
+    /// run from bin\ cannot steal the entry from a published TraceBrake install.
     /// No-ops when the feature is off (no value).
     /// </summary>
     public static bool NeedsRepair(string? existingValue, string currentExePath, Func<string, bool> fileExists)
@@ -70,6 +72,14 @@ public static class StartupRegistration
         if (string.Equals(registered, currentExePath, StringComparison.OrdinalIgnoreCase))
             return false;                                             // already us
 
+        // Product-rename invariant: once TraceBrake is running, a Run value must never remain pointed at the
+        // legacy Foreman.exe merely because that old file still exists. This also covers the observed sibling
+        // path where an earlier migration had already renamed the REGISTRY VALUE to "TraceBrake" while copying
+        // its old target verbatim, so the registration no longer carried a legacy-name signal of its own.
+        if (string.Equals(Path.GetFileName(currentExePath), ProductIdentity.ExecutableName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Path.GetFileName(registered), ProductIdentity.LegacyExecutableName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
         return !fileExists(registered);                               // heal only if the target is gone
     }
 
@@ -79,7 +89,7 @@ public static class StartupRegistration
     /// <summary>
     /// Classifies the risk that an auto-start exe won't be reachable at sign-in because of WHERE it lives.
     /// HKCU Run entries fire early at logon and fail SILENTLY when the path's drive isn't mounted — so a target
-    /// on anything but the system drive can leave Foreman quietly not starting: a removable stick, a network
+    /// on anything but the system drive can leave TraceBrake quietly not starting: a removable stick, a network
     /// share, or a secondary/external FIXED disk (e.g. W:) that was disconnected or mounted late. Note a USB or
     /// external drive often reports as Fixed, so "not the system drive" — not just DriveType.Removable — is the
     /// signal that matters. <paramref name="driveType"/> is the OS-reported type of the target's drive,
@@ -105,11 +115,11 @@ public static class StartupRegistration
         return risk switch
         {
             StartupDriveRisk.Removable =>
-                $"Start-with-Windows points at a removable drive ({drive}). Foreman won't start at sign-in whenever that drive is unplugged — install it on the system drive instead.",
+                $"Start-with-Windows points at a removable drive ({drive}). TraceBrake won't start at sign-in whenever that drive is unplugged — install it on the system drive instead.",
             StartupDriveRisk.Network =>
-                $"Start-with-Windows points at a network drive ({drive}). Foreman won't start at sign-in until that share is connected — install it on the system drive instead.",
+                $"Start-with-Windows points at a network drive ({drive}). TraceBrake won't start at sign-in until that share is connected — install it on the system drive instead.",
             StartupDriveRisk.NonSystemFixed =>
-                $"Start-with-Windows points at {drive}, not the system drive. If {drive} is disconnected or mounts late at sign-in, Foreman silently won't start — install it on the system drive instead.",
+                $"Start-with-Windows points at {drive}, not the system drive. If {drive} is disconnected or mounts late at sign-in, TraceBrake silently won't start — install it on the system drive instead.",
             _ => null,   // SystemDrive / Unknown — no warning
         };
     }

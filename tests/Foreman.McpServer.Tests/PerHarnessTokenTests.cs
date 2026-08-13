@@ -693,7 +693,7 @@ public sealed class CallerScopeToolTests : IDisposable
         Assert.Equal("cursor", req.HarnessId);
         Assert.Equal("codex", req.SenderHarnessId);
         Assert.Equal("harness_mail", req.RequestKind);
-        Assert.Contains("Foreman-mediated harness-to-harness handoff", req.SystemPrompt);
+        Assert.Contains("TraceBrake-mediated harness-to-harness handoff", req.SystemPrompt);
         Assert.Contains("BEGIN UNTRUSTED SENDER MESSAGE", req.Prompt);
         Assert.Contains("please review the LiveWeave diff", req.Prompt);
     }

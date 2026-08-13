@@ -1,7 +1,7 @@
 namespace Foreman.Core.Security;
 
 /// <summary>
-/// Process-global "computer use is HALTED" flag — the safety floor for Foreman-mediated computer/browser use.
+/// Process-global "computer use is HALTED" flag — the safety floor for TraceBrake-mediated computer/browser use.
 /// Set by the panic kill (global hotkey or the tray STOP item), checked by every CU executor before each action,
 /// and cleared ONLY by an operator + presence tap (never by an agent and never over MCP). Lives in Core so the
 /// McpServer tools, the App UI, and the future CU sidecar all read one source of truth.
@@ -15,7 +15,7 @@ public sealed class CuPanicState
 {
     private volatile bool _halted;
 
-    /// <summary>True while all Foreman-mediated computer/browser use is halted.</summary>
+    /// <summary>True while all TraceBrake-mediated computer/browser use is halted.</summary>
     public bool IsHalted => _halted;
 
     /// <summary>Best-effort notification that the halt flag flipped (arg = now-halted). For the tray/overlay/log to react.</summary>

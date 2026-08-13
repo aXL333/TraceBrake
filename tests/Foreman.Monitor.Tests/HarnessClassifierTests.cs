@@ -62,6 +62,41 @@ public sealed class HarnessClassifierTests
         Assert.Null(record.HarnessType);
     }
 
+    [Fact]
+    public void Classify_AttributesClaudeNativeHostByVendorPath()
+    {
+        var record = new ProcessRecord
+        {
+            Pid = 940_301,
+            Name = "chrome-native-host.exe",
+            ExecutablePath = @"C:\Users\dev\AppData\Roaming\Claude\ChromeNativeHost\chrome-native-host.exe",
+            CommandLine = @"chrome-native-host.exe chrome-extension://example/",
+            StartTime = DateTimeOffset.UtcNow,
+        };
+
+        HarnessClassifier.Classify(record);
+
+        Assert.True(record.IsHarness);
+        Assert.Equal("claude-code", record.HarnessType);
+    }
+
+    [Fact]
+    public void Classify_DoesNotAttributeAnotherVendorNativeHost()
+    {
+        var record = new ProcessRecord
+        {
+            Pid = 940_302,
+            Name = "chrome-native-host.exe",
+            ExecutablePath = @"C:\Users\dev\AppData\Roaming\OtherVendor\chrome-native-host.exe",
+            StartTime = DateTimeOffset.UtcNow,
+        };
+
+        HarnessClassifier.Classify(record);
+
+        Assert.False(record.IsHarness);
+        Assert.Null(record.HarnessType);
+    }
+
     // ── Local-model hosts (task #77) ──────────────────────────────────────────────────────────────────
     [Theory]
     [InlineData("LM Studio.exe", "", "lm-studio")]

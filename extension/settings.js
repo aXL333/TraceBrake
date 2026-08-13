@@ -1,5 +1,5 @@
 // Persisted extension settings (chrome.storage.local — extension-scoped, not readable by web pages or other
-// extensions). The token + pairedOrigin are written by the pairing flow; host/port default to Foreman's loopback.
+// extensions). The token + pairedOrigin are written by the pairing flow; host/port default to TraceBrake's loopback.
 const DEFAULTS = {
     host: '127.0.0.1',
     port: 54321,

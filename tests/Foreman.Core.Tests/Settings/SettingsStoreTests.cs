@@ -21,6 +21,7 @@ public sealed class SettingsStoreTests : IDisposable
         SettingsStore.HasPriorSealEvidence = null;
         SettingsStore.RecordSealEvidence = null;
         SettingsStore.IntegritySecretRecentlyRegenerated = null;
+        SettingsStore.SaveAuditSink = null;
         try { Directory.Delete(_dir, true); } catch { }
     }
 
@@ -276,5 +277,50 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.NotEqual("any", loaded.CuDriver);
         Assert.Equal(SettingsSealVerdict.Tampered, SettingsStore.LastSealVerdict);
+    }
+
+    [Fact]
+    public void SaveAudit_AttributesRoute_AndDistinguishesSecurityProjection()
+    {
+        var settings = new ForemanSettings { McpPort = 49152 };
+        SettingsStore.Save(settings, _path);
+        SettingsSaveAudit? observed = null;
+        SettingsStore.SaveAuditSink = audit => observed = audit;
+
+        using (SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
+                   SettingsChangeOrigin.AuthenticatedMcp, "codex", "test-non-security-save")))
+        {
+            settings.McpPort = 49153;
+            SettingsStore.Save(settings, _path);
+        }
+
+        Assert.NotNull(observed);
+        Assert.True(observed!.SettingsChanged);
+        Assert.False(observed.SecurityProjectionChanged);
+        Assert.Equal(SettingsChangeOrigin.AuthenticatedMcp, observed.Attribution.Origin);
+        Assert.Equal("codex", observed.Attribution.Actor);
+
+        settings.PresenceLock.Enabled = true;
+        SettingsStore.Save(settings, _path);
+
+        Assert.True(observed.SecurityProjectionChanged);
+        Assert.True(observed.Attribution.Suspicious);
+        Assert.Equal(SettingsChangeOrigin.Unattributed, observed.Attribution.Origin);
+        Assert.NotEqual(observed.PriorSecurityProjectionHash, observed.CurrentSecurityProjectionHash);
+    }
+
+    [Fact]
+    public void SaveAudit_NoOpSave_IsIdentifiedWithoutFalseChange()
+    {
+        var settings = new ForemanSettings();
+        SettingsStore.Save(settings, _path);
+        SettingsSaveAudit? observed = null;
+        SettingsStore.SaveAuditSink = audit => observed = audit;
+
+        SettingsStore.Save(settings, _path);
+
+        Assert.NotNull(observed);
+        Assert.False(observed!.SettingsChanged);
+        Assert.False(observed.SecurityProjectionChanged);
     }
 }

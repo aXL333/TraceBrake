@@ -7,14 +7,14 @@ namespace Foreman.Core.Models;
 /// agent reviewing this one), versus operational housekeeping (hangs / orphans / mess) that belongs to
 /// the offending harness itself via "Ask Harness".
 ///
-/// Cross-LLM audit is reserved for security-relevant events; hangs, orphans, non-zero exits, Foreman's
+/// Cross-LLM audit is reserved for security-relevant events; hangs, orphans, non-zero exits, TraceBrake's
 /// own info/monitoring notices, and MCP-inventory/tool-scan notices never route to a peer auditor.
 /// </summary>
 public static class AuditPolicy
 {
     public static bool QualifiesForAudit(ForemanEvent evt)
     {
-        // Operational housekeeping + Foreman's own notices are never peer-audited.
+        // Operational housekeeping + TraceBrake's own notices are never peer-audited.
         if (evt is HangDetectedEvent or OrphanDetectedEvent or NonzeroExitEvent
                 or InfoEvent or MonitoringNoticeEvent)
             return false;

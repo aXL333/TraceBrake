@@ -98,7 +98,7 @@
 
             <Grid Grid.Row="0">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Foreman Vault" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="TraceBrake Vault" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <Border Background="#FF13251B" CornerRadius="10" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="unlocked" Foreground="#FF5DCAA5" FontSize="11" />
                     </Border>
@@ -279,7 +279,7 @@
                                        FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,-6,0,10" />
 
                             <TextBlock Text="Models that can use these card numbers" FontSize="12" FontWeight="SemiBold" Margin="0,2,0,2" />
-                            <TextBlock Text="Opt-in only. A model appears here after Foreman has successfully assigned its connector; it does not need to be online now."
+                            <TextBlock Text="Opt-in only. A model appears here after TraceBrake has successfully assigned its connector; it does not need to be online now."
                                        FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6" />
                             <ItemsControl x:Name="CardHarnessSwitches">
                                 <ItemsControl.ItemTemplate>
@@ -302,7 +302,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock x:Name="NoCardHarnessesHint" Visibility="Collapsed"
-                                       Text="No successfully assigned Foreman model connectors yet. Connect a model first; cards remain operator-only."
+                                       Text="No successfully assigned TraceBrake model connectors yet. Connect a model first; cards remain operator-only."
                                        FontSize="11" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,4,0,8" />
                             <TextBlock x:Name="CardError" Foreground="#FFFF6666" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,8" />
                             <StackPanel Orientation="Horizontal">

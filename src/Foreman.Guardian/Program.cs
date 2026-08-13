@@ -1,7 +1,7 @@
 using System.ServiceProcess;
 using Foreman.Guardian;
 
-// Foreman Guardian (circle-back Phase A) — the OPT-IN LocalSystem authority that holds the event-log head-seal
+// TraceBrake Guardian (circle-back Phase A) — the OPT-IN LocalSystem authority that holds the event-log head-seal
 // key behind the SYSTEM boundary, so a same-user (medium-IL) agent can neither use the key nor forge a seal.
 //
 // Verbs:
@@ -46,7 +46,7 @@ catch (Exception ex)
     Console.Error.WriteLine($"Cannot create console client policy: {ex.Message}");
     return 2;
 }
-Console.WriteLine($"Foreman Guardian {GuardianAuthority.Version} — pipe '{GuardianPipeServer.PipeName}', trustMode={consolePolicy.Mode}, headKey={(authority.HeadKeyAvailable ? "available" : "unavailable (no TPM)")} (Ctrl+C to stop).");
+Console.WriteLine($"TraceBrake Guardian {GuardianAuthority.Version} — pipe '{GuardianPipeServer.PipeName}', trustMode={consolePolicy.Mode}, headKey={(authority.HeadKeyAvailable ? "available" : "unavailable (no TPM)")} (Ctrl+C to stop).");
 
 var server = new GuardianPipeServer(authority, consolePolicy, Console.WriteLine);
 try { await server.RunAsync(cts.Token); }

@@ -47,8 +47,7 @@ public sealed class EventLogStore
                          ITemporalClock? clock = null, ILogTimeAnchor? timeAnchor = null,
                          long maxBytes = 32L * 1024 * 1024)
     {
-        var dir = baseDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman");
+        var dir = baseDir ?? ProductIdentity.LocalDataRoot;
         _file = Path.Combine(dir, "events.log.jsonl");
         _maxEntries = Math.Max(1, maxEntries);
         _maxBytes = Math.Max(4096, maxBytes);

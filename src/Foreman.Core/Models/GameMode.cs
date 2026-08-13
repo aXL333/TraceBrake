@@ -15,10 +15,10 @@ public enum UserNotificationState
     App                  = 7,
 }
 
-/// <summary>Game-mode preferences: pause Foreman's on-screen interruptions while a game/fullscreen app is active.</summary>
+/// <summary>Game-mode preferences: pause TraceBrake's on-screen interruptions while a game/fullscreen app is active.</summary>
 public sealed class GameModeSettings
 {
-    /// <summary>Auto-detect a fullscreen game/app and pause Foreman's tray popups + alarm windows while it's active.</summary>
+    /// <summary>Auto-detect a fullscreen game/app and pause TraceBrake's tray popups + alarm windows while it's active.</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>

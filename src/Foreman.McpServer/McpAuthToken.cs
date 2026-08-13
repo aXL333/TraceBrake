@@ -63,8 +63,7 @@ public sealed class McpAuthToken
 
     public McpAuthToken(string? baseDirectory = null)
     {
-        var dir = baseDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman");
+        var dir = baseDirectory ?? Foreman.Core.ProductIdentity.LocalDataRoot;
         _tokenPath = Path.Combine(dir, "mcp.token");
         _setupPath = Path.Combine(dir, "mcp-setup.txt");
         Value = LoadOrCreate(dir, _tokenPath);
@@ -108,7 +107,7 @@ public sealed class McpAuthToken
     /// <summary>
     /// Mints a per-harness bearer token <c>fmh1.&lt;base64url(harnessId)&gt;.&lt;mac&gt;</c>, where mac =
     /// HMAC-SHA256(install-secret, harnessId). Stateless: the identity is carried in the token and the
-    /// MAC proves Foreman minted it — so a connected agent's identity is unforgeable without the
+    /// MAC proves TraceBrake minted it — so a connected agent's identity is unforgeable without the
     /// (user-ACL'd) install secret, and no per-harness secret has to be stored.
     /// </summary>
     public string MintHarnessToken(string harnessId)
@@ -228,10 +227,10 @@ public sealed class McpAuthToken
     {
         var snippet =
 $$"""
-Foreman Agent Safety MCP - connection setup
+TraceBrake MCP - connection setup
 ===========================================
 
-Foreman Agent Safety's MCP server requires a bearer token. It listens on:
+TraceBrake's MCP server requires a bearer token. It listens on:
 
     http://localhost:{{port}}/mcp        (tools - requires the token)
     http://localhost:{{port}}/health     (liveness - open)
@@ -259,7 +258,7 @@ url = "http://localhost:{{port}}/mcp"
 http_headers = { Authorization = "Bearer <TOKEN>" }
 enabled = true
 
-Keep mcp.token private - anyone who can read it can call Foreman Agent Safety's MCP tools.
+Keep mcp.token private - anyone who can read it can call TraceBrake's MCP tools.
 Delete mcp.token to force a new token (you must then update every client config).
 """;
         try { File.WriteAllText(_setupPath, snippet); }

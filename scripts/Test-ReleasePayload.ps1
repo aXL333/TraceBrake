@@ -25,7 +25,7 @@ function Get-RelativeChildPath([string] $BasePath, [string] $ChildPath) {
     return $child.Substring($prefix.Length)
 }
 $required = @(
-    'Foreman.exe',
+    'TraceBrake.exe',
     'sidecar\Foreman.EtwSidecar.exe',
     'guardian\Foreman.Guardian.exe',
     'cu-sidecar\Foreman.CuSidecar.exe',
@@ -73,7 +73,7 @@ if ($manifest.schemaVersion -ne 1 -or $null -eq $manifest.files) {
     throw 'Release payload manifest has an unsupported schema.'
 }
 
-$allowedRootFiles = @('Foreman.exe', 'release-payload.manifest.json')
+$allowedRootFiles = @('TraceBrake.exe', 'release-payload.manifest.json')
 $actualRootFiles = @(Get-ChildItem -LiteralPath $root -File -Force | ForEach-Object Name)
 $unexpectedRootFiles = @($actualRootFiles | Where-Object { $_ -notin $allowedRootFiles })
 $missingRootFiles = @($allowedRootFiles | Where-Object { $_ -notin $actualRootFiles })

@@ -6,8 +6,8 @@ namespace Foreman.App.ComputerUse;
 
 /// <summary>
 /// System-global hotkey (default Ctrl+Alt+Shift+B) to BIND the desktop computer-use target window. On a dedicated
-/// message-only window (like <see cref="PanicHotkey"/>) so it fires regardless of Foreman's focus. Pressing it while the
-/// intended target window is FOREGROUND is the point: the bind captures that foreground window BEFORE Foreman steals
+/// message-only window (like <see cref="PanicHotkey"/>) so it fires regardless of TraceBrake's focus. Pressing it while the
+/// intended target window is FOREGROUND is the point: the bind captures that foreground window BEFORE TraceBrake steals
 /// focus, then presence-gates the bind. Best-effort; if the chord is taken, <see cref="Registered"/> is false.
 /// Must be constructed on the WPF UI thread.
 /// </summary>

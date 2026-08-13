@@ -76,8 +76,8 @@ public partial class CuOverlayWindow : Window, Foreman.Core.ComputerUse.IHudAck
         Reposition();   // computes _monIndex (the bound window's monitor) and places the HUD there
         var mon = _monIndex > 0 ? $"  [monitor {_monIndex}]" : string.Empty;
         Label.Text = (string.IsNullOrWhiteSpace(target)
-            ? "CLAUDE DRIVING THRU FOREMAN"
-            : $"CLAUDE DRIVING THRU FOREMAN — {target}") + mon;
+            ? "CLAUDE DRIVING THRU TRACEBRAKE"
+            : $"CLAUDE DRIVING THRU TRACEBRAKE — {target}") + mon;
         if (firstShow) Animate();   // animate once on appearance - not on every per-action call
         _hide.Stop();
         _hide.Start();
@@ -132,7 +132,7 @@ public partial class CuOverlayWindow : Window, Foreman.Core.ComputerUse.IHudAck
     public void EnsureShown()
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(EnsureShown)); return; }
-        if (string.IsNullOrWhiteSpace(Label.Text) || !IsVisible) Label.Text = "AI AGENT DRIVING THRU FOREMAN";
+        if (string.IsNullOrWhiteSpace(Label.Text) || !IsVisible) Label.Text = "AI AGENT DRIVING THRU TRACEBRAKE";
         Topmost = true;
         if (!IsVisible) { Show(); Animate(); }
         UpdateLayout();   // settle SizeToContent before centering (the blue input row changes width/height)
@@ -176,7 +176,7 @@ public partial class CuOverlayWindow : Window, Foreman.Core.ComputerUse.IHudAck
         {
             if (!IsWindowVisible(w) || IsCloaked(w)) continue;
             GetWindowThreadProcessId(w, out var pid);
-            if (pid == OurPid) continue;   // Foreman's own windows aren't an adversarial occluder
+            if (pid == OurPid) continue;   // TraceBrake's own windows aren't an adversarial occluder
             if (GetWindowRect(w, out var wr) && Overlaps(wr, hud)) return false;
         }
         return true;

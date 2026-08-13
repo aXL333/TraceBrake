@@ -119,9 +119,9 @@ function harnessLabel(value) {
 
 function renderAgentControls() {
     const foreman = agentMode === 'foreman';
-    $('agentModeForeman').classList.toggle('active', foreman);
+    $('agentModeTraceBrake').classList.toggle('active', foreman);
     $('agentModeNano').classList.toggle('active', !foreman);
-    $('agentModeForeman').setAttribute('aria-pressed', String(foreman));
+    $('agentModeTraceBrake').setAttribute('aria-pressed', String(foreman));
     $('agentModeNano').setAttribute('aria-pressed', String(!foreman));
     $('agentHarness').style.display = foreman ? 'block' : 'none';
 
@@ -147,7 +147,7 @@ function renderAgentControls() {
         message = nanoAvailability === 'downloading' ? 'Nano is downloading.' : 'Nano is unavailable in this Chrome profile.';
         bad = nanoAvailability !== 'downloading';
     } else if (!message && foreman && !foremanReady) {
-        message = status?.paired ? 'Foreman is offline.' : 'Pair LiveWeave with Foreman.';
+        message = status?.paired ? 'TraceBrake is offline.' : 'Pair LiveWeave with TraceBrake.';
         bad = true;
     }
     statusElement.textContent = message;
@@ -159,18 +159,18 @@ function renderConnection() {
     if (!status?.paired) {
         badge.textContent = 'Not paired';
         badge.className = 'bad';
-        $('connectionHint').textContent = 'Open extension options to pair with Foreman.';
+        $('connectionHint').textContent = 'Open extension options to pair with TraceBrake.';
         return;
     }
     if (status.needsPair) {
         badge.textContent = 'Re-pair';
         badge.className = 'bad';
-        $('connectionHint').textContent = 'Foreman rejected the saved token. Re-pair from extension options.';
+        $('connectionHint').textContent = 'TraceBrake rejected the saved token. Re-pair from extension options.';
         return;
     }
     badge.textContent = status.connected
         ? `Connected${status.extensionVersion ? ` ${status.extensionVersion}` : ''}`
-        : 'Foreman offline';
+        : 'TraceBrake offline';
     badge.className = status.connected ? 'ok' : '';
     $('driver').value = status.liveweaveDriver || '';
     if ([...$('agentHarness').options].some((option) => option.value === status.liveweaveDriver)) {
@@ -178,7 +178,7 @@ function renderConnection() {
     }
     const version = status.extensionVersion ? `LiveWeave ${status.extensionVersion}` : 'LiveWeave';
     const canvas = status.canvasConnected ? 'preview connected' : 'preview reconnects on open';
-    $('connectionHint').textContent = `${version}; ${canvas}; ${status.base || 'Local Foreman'}.`;
+    $('connectionHint').textContent = `${version}; ${canvas}; ${status.base || 'Local TraceBrake'}.`;
 }
 
 function renderPage() {
@@ -409,7 +409,7 @@ async function runAgentEdit() {
     const targetPath = selectedElement?.path || 'body';
     const selection = selectedElement || { path: 'body', tag: 'body', scope: 'page', styles: {} };
     agentBusy = true;
-    setAgentStatus(agentMode === 'foreman' ? 'Sending through Foreman...' : 'Running on-device Nano...');
+    setAgentStatus(agentMode === 'foreman' ? 'Sending through TraceBrake...' : 'Running on-device Nano...');
     let nanoSession = null;
     try {
         if (agentMode === 'nano') {
@@ -452,7 +452,7 @@ async function runAgentEdit() {
             instruction,
             selection,
         });
-        if (!result.ok) throw new Error(result.error || 'Foreman could not queue the edit request.');
+        if (!result.ok) throw new Error(result.error || 'TraceBrake could not queue the edit request.');
         agentRequestId = result.requestId;
         setAgentStatus(result.delivered === 'sampled' || result.delivered === 'notified'
             ? `Delivered to ${harnessLabel(targetHarnessId)}.`
@@ -619,7 +619,7 @@ $('driver').addEventListener('change', async () => {
     renderAgentControls();
 });
 
-$('agentModeForeman').addEventListener('click', () => {
+$('agentModeTraceBrake').addEventListener('click', () => {
     agentMode = 'foreman';
     setAgentStatus('');
 });

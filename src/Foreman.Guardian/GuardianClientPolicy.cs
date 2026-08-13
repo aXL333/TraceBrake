@@ -8,7 +8,7 @@ namespace Foreman.Guardian;
 /// <summary>
 /// Persistent allow-list for callers of the LocalSystem guardian pipe.
 /// Signed installations pin the verified publisher, so future same-publisher releases continue to work.
-/// Unsigned development installations pin one canonical Foreman.exe path and SHA-256 instead of trusting every
+/// Unsigned development installations pin one canonical TraceBrake.exe path and SHA-256 instead of trusting every
 /// authenticated local user. The development posture is useful but is deliberately not described as publisher
 /// authenticated: a process able to replace that user-owned binary can still assume its identity.
 /// </summary>
@@ -47,11 +47,11 @@ public sealed class GuardianClientPolicy
     public static GuardianClientPolicy CreateForInstall(string? foremanPath)
     {
         if (string.IsNullOrWhiteSpace(foremanPath))
-            throw new InvalidOperationException("The Foreman executable path is required.");
+            throw new InvalidOperationException("The TraceBrake executable path is required.");
 
         var canonical = CanonicalPath(foremanPath);
         if (!File.Exists(canonical))
-            throw new FileNotFoundException("The Foreman executable was not found.", canonical);
+            throw new FileNotFoundException("The TraceBrake executable was not found.", canonical);
 
         var publisher = GuardianIntegrity.VerifiedSignerThumbprint(canonical);
         return publisher is not null
@@ -88,7 +88,7 @@ public sealed class GuardianClientPolicy
             if (string.Equals(Mode, PathHashPinnedMode, StringComparison.Ordinal))
             {
                 if (!string.Equals(CanonicalPath(ForemanPath), canonical, StringComparison.OrdinalIgnoreCase))
-                    return (false, "client path does not match the pinned development Foreman executable.");
+                    return (false, "client path does not match the pinned development TraceBrake executable.");
                 var hash = GuardianIntegrity.Sha256File(canonical);
                 return Decide(Mode, ForemanPath, Sha256, PublisherThumbprint, canonical, hash, null);
             }

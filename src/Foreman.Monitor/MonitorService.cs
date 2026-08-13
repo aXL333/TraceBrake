@@ -16,6 +16,7 @@ public sealed class MonitorService : IDisposable
     private readonly IoPoller _poller;
     private readonly ProfileStore _profileStore;
     private readonly DeadMansSwitch _deadMansSwitch;
+    private readonly HarnessAppModelFailureMonitor _appModelFailures;
     private bool _started;
 
     public ProcessTreeTracker Tree     { get; }
@@ -45,6 +46,7 @@ public sealed class MonitorService : IDisposable
             settings.EffectiveThresholds);   // per-harness Trust thresholds (level 3 == global baseline)
         IdleCleanup = new IdleHarnessDetector(bus, settings, Tree);
         _deadMansSwitch = new DeadMansSwitch(bus, settings, Tree, new Win32UserInputProvider());
+        _appModelFailures = new HarnessAppModelFailureMonitor(bus);
     }
 
     public void Start()
@@ -56,6 +58,7 @@ public sealed class MonitorService : IDisposable
         McpInventory.Start();
         IdleCleanup.Start();
         _deadMansSwitch.Start();
+        _appModelFailures.Start();
     }
 
     public void Dispose()
@@ -66,5 +69,6 @@ public sealed class MonitorService : IDisposable
         McpInventory.Dispose();
         IdleCleanup.Dispose();
         _deadMansSwitch.Dispose();
+        _appModelFailures.Dispose();
     }
 }

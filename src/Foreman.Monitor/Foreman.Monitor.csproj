@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Management" />
+    <PackageReference Include="System.Diagnostics.EventLog" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>
 

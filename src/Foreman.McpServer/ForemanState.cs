@@ -48,7 +48,7 @@ public sealed class ForemanState : IEventSink
     public Action<string>? ResetBehaviorProfile { get; set; }
 
     /// <summary>
-    /// Terminates a process via Foreman's hardened kill path (KillGuard never-kill set + start-time identity pin).
+    /// Terminates a process via TraceBrake's hardened kill path (KillGuard never-kill set + start-time identity pin).
     /// Wired by the App to ProcessTreeTracker.KillProcess; null in tests / headless, where the broker reports the
     /// capability as unavailable rather than pretending to kill. (pid, expectedStartTime) -> true if terminated.
     /// </summary>
@@ -63,7 +63,7 @@ public sealed class ForemanState : IEventSink
     public Func<string, string, string, string, Task<string>>? DeliverHarnessAsk { get; set; }
 
     /// <summary>
-    /// Terminations Foreman BROKERED for a harness (request_process_kill). Shared with the Monitor detection path
+    /// Terminations TraceBrake BROKERED for a harness (request_process_kill). Shared with the Monitor detection path
     /// (via the App) so an authorised kill reads as expected/quiet while a raw, un-attributed kill stays loud.
     /// </summary>
     public Foreman.Core.Termination.ExpectedTerminationLedger ExpectedTerminations { get; } = new();

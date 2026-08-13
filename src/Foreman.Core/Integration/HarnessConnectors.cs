@@ -12,7 +12,7 @@ public sealed record HarnessConnector(
 public sealed record ReissueResult(string HarnessId, string DisplayName, ConnectStatus Status, string Message);
 
 /// <summary>
-/// Registry of the harnesses Foreman can write MCP config for, plus batch operations to (re)connect many at
+/// Registry of the harnesses TraceBrake can write MCP config for, plus batch operations to (re)connect many at
 /// once — the robust fix when per-harness tokens go stale, and the one-click "connect everything" path.
 ///
 /// Per-harness tokens are HMAC'd over the install secret (<c>mcp.token</c>); if that secret is rotated (the file
@@ -45,18 +45,18 @@ public static class HarnessConnectors
         var results = new List<ReissueResult>();
         foreach (var c in connectors ?? All)
         {
-            if (!SafeBool(() => c.IsConfigured(port))) continue;   // can't read / not pointed at Foreman → leave alone
+            if (!SafeBool(() => c.IsConfigured(port))) continue;   // can't read / not pointed at TraceBrake → leave alone
             results.Add(RunConnect(c, port, mint));
         }
         return results;
     }
 
     /// <summary>
-    /// One-click "connect everything": writes (or refreshes) the Foreman MCP entry — with a fresh scoped token —
+    /// One-click "connect everything": writes (or refreshes) the TraceBrake MCP entry — with a fresh scoped token —
     /// for every agent that is (a) currently running (its harness id is in <paramref name="runningHarnessIds"/>),
     /// (b) already configured here, or (c) installed on this machine (its config file/dir exists). This both
     /// connects not-yet-wired agents AND repairs stale tokens on configured ones, in a single pass. Agents that
-    /// are none of running/configured/installed are skipped, so Foreman never litters config for tools you don't
+    /// are none of running/configured/installed are skipped, so TraceBrake never litters config for tools you don't
     /// use. Never throws: a connector whose probe or write fails is reported as <see cref="ConnectStatus.Failed"/>.
     ///
     /// Note: this writes the config; the agent itself opens the MCP session on its NEXT start/restart — Foreman
@@ -75,8 +75,8 @@ public static class HarnessConnectors
         foreach (var c in connectors ?? All)
         {
             var relevant =
-                (running?.Contains(c.HarnessId) ?? false)               // Foreman sees it running now
-                || SafeBool(() => c.IsConfigured(port))                 // already points at Foreman (repairs a stale token)
+                (running?.Contains(c.HarnessId) ?? false)               // TraceBrake sees it running now
+                || SafeBool(() => c.IsConfigured(port))                 // already points at TraceBrake (repairs a stale token)
                 || SafeBool(() => c.IsInstalled?.Invoke() ?? false);    // installed on disk but not yet connected
             if (!relevant) continue;
             results.Add(RunConnect(c, port, mint));

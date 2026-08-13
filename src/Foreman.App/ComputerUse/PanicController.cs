@@ -11,7 +11,7 @@ namespace Foreman.App.ComputerUse;
 /// Orchestrates the computer-use panic kill. HALT is the safe direction and is unguarded + idempotent: it sets the
 /// process-global <see cref="CuPanicState"/> (every CU executor checks it before each action) and makes the stop
 /// LOUD — a Critical event on the bus + a durable OS-event-log <see cref="OsEventIds.ProtectiveAction"/> record, so
-/// it survives even if Foreman is later killed. RESUME is the dangerous direction and is gated behind operator
+/// it survives even if TraceBrake is later killed. RESUME is the dangerous direction and is gated behind operator
 /// presence (Windows Hello) via <see cref="PresenceGuard"/>; an agent can never un-halt itself, and resume is
 /// deliberately NOT exposed over MCP. Wired to the global <see cref="PanicHotkey"/> and the tray STOP item.
 /// </summary>
@@ -33,13 +33,13 @@ public sealed class PanicController
 
     public bool IsHalted => _panic.IsHalted;
 
-    /// <summary>Halt all Foreman-mediated computer/browser use now. No gate (safe direction). Loud only on the first halt.</summary>
+    /// <summary>Halt all TraceBrake-mediated computer/browser use now. No gate (safe direction). Loud only on the first halt.</summary>
     public void Halt(string trigger)
     {
         if (!_panic.Halt()) return;   // already halted — don't double-log
         _bus.Publish(new MonitoringNoticeEvent(
             DateTimeOffset.UtcNow, ForemanSeverity.Critical, "Foreman.ComputerUse",
-            $"PANIC: computer use HALTED ({trigger}). All Foreman-mediated browser/desktop/Android actions are stopped. " +
+            $"PANIC: computer use HALTED ({trigger}). All TraceBrake-mediated browser/desktop/Android actions are stopped. " +
             "Resume requires operator presence."));
         if (_osLogEnabled())
             _osLog.Write(OsEventIds.ProtectiveAction, OsEventCategory.Security, ForemanSeverity.Critical,

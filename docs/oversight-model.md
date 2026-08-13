@@ -1,12 +1,12 @@
-# Foreman Agent Safety oversight model
+# TraceBrake oversight model
 
-How Foreman Agent Safety responds to an alert, and how it watches the MCP supply chain. This is the design
+How TraceBrake responds to an alert, and how it watches the MCP supply chain. This is the design
 rationale behind two deliberately separate response mechanisms plus the MCP inventory/tool scan.
 File and symbol references point at the source of truth.
 
 ## Two responses to an alert - and why they're separate
 
-When Foreman Agent Safety raises an alert, the operator has two distinct tools. They were conflated early on
+When TraceBrake raises an alert, the operator has two distinct tools. They were conflated early on
 (the "Ask Harness" button actually ran the audit router); they are now split, because they answer
 different questions:
 
@@ -16,18 +16,18 @@ different questions:
 | Question | "justify and/or act on this" | "is this alarming? second opinion" |
 | Applies to | every alert type, incl. hangs/mess | **alarming behavior only** |
 | Delivery | the offender's own MCP session, durable MCP request queue, then clipboard fallback | selected reviewer harness via MCP/durable queue, API/manual route fallback |
-| Button | shown when Foreman Agent Safety can attribute the alert to a harness | shown only when the alert qualifies |
+| Button | shown when TraceBrake can attribute the alert to a harness | shown only when the alert qualifies |
 
 ### Ask Harness - interrogate the offender
 
-`AlertDetailWindow.AskHarnessClick` builds a second-person *"Foreman Agent Safety flagged you - account for this"*
+`AlertDetailWindow.AskHarnessClick` builds a second-person *"TraceBrake flagged you - account for this"*
 prompt (`BuildSelfJustifyPrompt` + a per-alert-type `BuildAskLine`) and tries to deliver it to the
 **offending harness's own MCP session**, with a durable poll/reply path behind it
 (`SseSessionManager.AskOffenderAsync`):
 
 1. **Sampling round-trip** - if a matching session advertises the sampling capability
-   (`McpServer.ClientCapabilities.Sampling`), Foreman Agent Safety calls `McpServer.SampleAsync(...)`,
-   the harness's model answers, and the reply is shown back in Foreman Agent Safety. A true poll.
+   (`McpServer.ClientCapabilities.Sampling`), TraceBrake calls `McpServer.SampleAsync(...)`,
+   the harness's model answers, and the reply is shown back in TraceBrake. A true poll.
 2. **Targeted notification** - connected but no sampling capability: push the prompt into that
    session only (`SendNotificationAsync("notifications/message", ...)`), including the durable
    `requestId`. The client can then call `ReplyToAskHarnessRequest` so Foreman records the answer.
@@ -37,7 +37,7 @@ prompt (`BuildSelfJustifyPrompt` + a per-alert-type `BuildAskLine`) and tries to
    compatibility path for clients that cannot be server-pushed or sampled. The Codex connector
    writes a marked `~/.codex/AGENTS.md` section instructing Codex to poll and reply through these tools.
 4. **Scoped clipboard** - if the offender isn't connected or the operator wants a visible manual path,
-   Foreman Agent Safety also copies a prompt that names the harness and PID (*"paste into the
+   TraceBrake also copies a prompt that names the harness and PID (*"paste into the
    claude-code that owns pid 1234"*).
 
 The per-type ask is concrete: a hang means "abort or explain the stuck child"; an orphan means "reap
@@ -48,7 +48,7 @@ already gated MCP tools - chiefly `AcknowledgeAlert`, which **refuses High/Criti
 (`ForemanMcpTools.AcknowledgeAlert`). So a harness can clear a benign Low/Medium self-alert but can
 never silence a serious one, and Ask Harness grants **no new kill authority** to harnesses (killing
 stays an operator action in the UI). Cleanup of a stuck/abandoned child is the harness's own
-follow-up in its own shell - Foreman Agent Safety asks; the harness acts in-band.
+follow-up in its own shell - TraceBrake asks; the harness acts in-band.
 
 **Attribution is advisory, never authorization.** A session is matched to a harness by the client's
 **self-announced** name/title (`McpServer.ClientInfo`, matched by `SseSessionManager.MatchesHarness`).
@@ -63,7 +63,7 @@ prompt's command line is secret-masked (`RedactSecrets`) before it leaves the wi
 `LlmTriageSettings.AuditorPreferences` (`PreventSelfAudit` excludes the offender) and building a
 third-person *"you are an independent safety auditor"* prompt for that reviewer.
 
-If the selected reviewer is another harness, Foreman Agent Safety queues the request for that harness and tries
+If the selected reviewer is another harness, TraceBrake queues the request for that harness and tries
 the same live MCP delivery ladder used by Ask Harness. If the reviewer is not connected yet, the
 request remains pending for polling and the clipboard is only a manual fallback. API reviewers remain
 configuration targets for now; without an API endpoint/delivery adapter, Foreman prepares a manual
@@ -91,7 +91,7 @@ Two tiers, governed by the same cost rule: anything with overhead/network is opt
 configured across harness configs (Claude Code `.claude.json`, global + per-project; Codex
 `~/.codex/config.toml`) and `McpInventoryMonitor` raises a **Medium** alert when a new or
 changed-target server appears - a "who added this MCP server?" check. Config-file reads only: no
-network, no elevation. First run is a silent baseline; the seen-set persists. Foreman Agent Safety's own loopback
+network, no elevation. First run is a silent baseline; the seen-set persists. TraceBrake's own loopback
 `foreman` MCP connector is treated as an informational registration event, not a supply-chain alert.
 Exposed to agents via the `ListMcpServers` MCP tool.
 
@@ -102,7 +102,7 @@ HTTP/SSE servers (`McpToolProbe` over `HttpClientTransport`), lists their tools,
 tested `McpToolScanner` over names + descriptions (`ignore-instructions`, `references-system-prompt`,
 `hide-from-user`, `exfiltration`, `covert`, `pipe-to-shell`). New findings raise a **High** alert.
 This is the only feature that makes outbound connections to third-party servers; **stdio servers are
-never launched** (Foreman Agent Safety won't spawn what it audits) and Foreman Agent Safety's own server is skipped. Exposed via
+never launched** (TraceBrake won't spawn what it audits) and TraceBrake's own server is skipped. Exposed via
 the `ListMcpToolFindings` MCP tool (read-only/cached).
 
 ## Honest limitations & on-machine verification

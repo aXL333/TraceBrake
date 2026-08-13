@@ -82,7 +82,7 @@ public static class CuHeuristics
             }
             catch (RegexMatchTimeoutException) { /* fall through */ }
 
-            // No resolved target -> Foreman cannot identify what is being acted on -> Hold (never auto-Allow).
+            // No resolved target -> TraceBrake cannot identify what is being acted on -> Hold (never auto-Allow).
             if (string.IsNullOrWhiteSpace(label))
                 return CuVerdict.Hold(Src,
                     "desktop action has no resolved target — cannot identify the control; held for operator review");

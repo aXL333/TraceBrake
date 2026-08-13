@@ -4,7 +4,7 @@ using Foreman.Core.Models;
 namespace Foreman.Core.Alerts;
 
 /// <summary>
-/// Automatic, non-destructive responses Foreman can take when a harness escalates. Deliberately a
+/// Automatic, non-destructive responses TraceBrake can take when a harness escalates. Deliberately a
 /// closed set of SAFE actions — there is no auto-kill or auto-mute here; destructive/silencing actions
 /// stay manual + confirmed. That omission is the core "within reason" guardrail.
 /// </summary>

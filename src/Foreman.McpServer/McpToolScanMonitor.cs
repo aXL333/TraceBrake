@@ -12,7 +12,7 @@ namespace Foreman.McpServer;
 ///
 /// This is the ONLY component that makes outbound connections to third-party servers, so it is OFF
 /// unless the user enables it (Settings → Scan MCP tools). stdio servers are never launched — Foreman
-/// won't spawn the process it's auditing — and Foreman's own server is skipped. Findings are
+/// won't spawn the process it's auditing — and TraceBrake's own server is skipped. Findings are
 /// persisted-deduped so the same finding doesn't re-alert on every pass.
 /// </summary>
 public sealed class McpToolScanMonitor : IDisposable
@@ -37,8 +37,7 @@ public sealed class McpToolScanMonitor : IDisposable
         _bus       = bus;
         _inventory = inventory;
         _ownPort   = ownPort;
-        var dir    = baseDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman");
+        var dir    = baseDir ?? Foreman.Core.ProductIdentity.LocalDataRoot;
         _seenFile  = Path.Combine(dir, "mcp-tool-findings-seen.json");
     }
 
@@ -88,7 +87,7 @@ public sealed class McpToolScanMonitor : IDisposable
                 catch { unreachable++; }        // needs its own auth / offline / not an MCP endpoint
             }
 
-            // Name what was skipped and why, so "1 skipped" isn't a mystery (it's usually Foreman itself).
+            // Name what was skipped and why, so "1 skipped" isn't a mystery (it's usually TraceBrake itself).
             var skipped = snapshot
                 .Where(e => !IsScannable(e))
                 .Select(e => $"{e.Name} ({SkipReason(e)})")
@@ -121,7 +120,7 @@ public sealed class McpToolScanMonitor : IDisposable
     }
 
     /// <summary>
-    /// True if a server target is something we'll probe: an absolute http(s) URL that isn't Foreman's
+    /// True if a server target is something we'll probe: an absolute http(s) URL that isn't TraceBrake's
     /// own loopback server. stdio (command-based, no URL) and self are excluded.
     /// </summary>
     public static bool IsScannableTarget(string target, int ownPort)
@@ -129,7 +128,7 @@ public sealed class McpToolScanMonitor : IDisposable
         if (!Uri.TryCreate(target, UriKind.Absolute, out var u)) return false;            // stdio / no URL
         if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return false;
         var isLocal = u.IsLoopback || string.Equals(u.Host, "localhost", StringComparison.OrdinalIgnoreCase);
-        if (isLocal && u.Port == ownPort) return false;                                    // Foreman's own server
+        if (isLocal && u.Port == ownPort) return false;                                    // TraceBrake's own server
         return true;
     }
 

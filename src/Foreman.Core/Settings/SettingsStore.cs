@@ -1,12 +1,12 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Foreman.Core.Settings;
 
 public sealed class SettingsStore
 {
-    private static readonly string _path = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Foreman", "settings.json");
+    private static readonly string _path = Path.Combine(ProductIdentity.LocalDataRoot, "settings.json");
 
     private static readonly JsonSerializerOptions _opts = new() { WriteIndented = true };
 
@@ -43,6 +43,12 @@ public sealed class SettingsStore
     public static Func<bool>? IntegritySecretRecentlyRegenerated { get; set; }
 
     /// <summary>
+    /// Best-effort, secret-free observer invoked after a successful save. The App routes this into TraceBrake's
+    /// hash-chained event stream and OS-event-log handoff. Tests and non-App hosts may leave it null.
+    /// </summary>
+    public static Action<SettingsSaveAudit>? SaveAuditSink { get; set; }
+
+    /// <summary>
     /// The seal verdict from the most recent <see cref="Load()"/>: Tampered means settings.json was edited by
     /// something other than Foreman. A tampered object is never returned: Load first restores a sealed last-known-good
     /// snapshot, or falls back to safe defaults when no verified recovery exists. The App still reads this verdict
@@ -73,7 +79,7 @@ public sealed class SettingsStore
                 TryRestorePrimary(path, recovered.Value.Json, recovered.Value.Seal);
                 RecoveryRestored = true;
                 LastLoadFault = "settings.json was removed after settings sealing had been established. The sealed " +
-                                "last-known-good settings were restored before Foreman initialised.";
+                                "last-known-good settings were restored before TraceBrake initialised.";
                 return recovered.Value.Settings;
             }
             if (SafeHasPriorSealEvidence())
@@ -92,7 +98,7 @@ public sealed class SettingsStore
             var settings = Deserialize(json);
 
             // Tamper check: a same-user agent can edit this file directly to weaken posture (disable the presence
-            // lock / log persistence) — bypassing the UI gates entirely. Foreman re-seals on every save, so a
+            // lock / log persistence) — bypassing the UI gates entirely. TraceBrake re-seals on every save, so a
             // mismatch here means the file was changed by something other than Foreman. We can't PREVENT that
             // (no privilege boundary), but the App turns this verdict into a loud Critical + OS-event-log entry.
             var sealer = loadSealer;
@@ -115,7 +121,7 @@ public sealed class SettingsStore
             }
             if (LastSealVerdict == SettingsSealVerdict.Sealed)
             {
-                // Keep a verified recovery copy of the exact settings Foreman last accepted. It is deliberately
+                // Keep a verified recovery copy of the exact settings TraceBrake last accepted. It is deliberately
                 // separate from settings.json so a later direct edit can be reverted before startup consumes it.
                 TryWriteRecovery(path, json, storedSeal!);
                 TryRecordSealEvidence();
@@ -144,13 +150,13 @@ public sealed class SettingsStore
                 {
                     TryRestorePrimary(path, recovered.Value.Json, recovered.Value.Seal);
                     RecoveryRestored = true;
-                    LastLoadFault = "A direct edit to security-significant settings was rejected before Foreman " +
+                    LastLoadFault = "A direct edit to security-significant settings was rejected before TraceBrake " +
                                     "initialised. The sealed last-known-good settings were restored; the attempted " +
                                     "file was quarantined with a .tampered suffix.";
                     return recovered.Value.Settings;
                 }
 
-                LastLoadFault = "A direct edit to security-significant settings was rejected before Foreman " +
+                LastLoadFault = "A direct edit to security-significant settings was rejected before TraceBrake " +
                                 "initialised. No verified recovery snapshot was available, so safe defaults were " +
                                 "loaded and the attempted file was quarantined with a .tampered suffix.";
                 return new ForemanSettings();
@@ -187,12 +193,28 @@ public sealed class SettingsStore
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var json = JsonSerializer.Serialize(settings, _opts);
+        var currentProjection = SettingsSeal.SecurityProjection(settings);
+        string? priorJson = null;
+        string? priorProjection = null;
+        try
+        {
+            if (File.Exists(path))
+            {
+                priorJson = File.ReadAllText(path);
+                priorProjection = SettingsSeal.SecurityProjection(Deserialize(priorJson));
+            }
+        }
+        catch
+        {
+            // The write path remains authoritative. A missing prior comparison becomes an explicit unknown hash,
+            // never a claim that the security posture was unchanged.
+        }
 
         // Write to a sibling temp file, then swap it in. A crash or full disk mid-write leaves the temp
         // file (ignored on next launch) rather than a half-written settings.json that would be quarantined.
         WriteAtomically(path, json);
 
-        // Re-seal the security-significant projection so any later edit Foreman didn't make is detectable at load.
+        // Re-seal the security-significant projection so any later edit TraceBrake didn't make is detectable at load.
         // Through the guardian when set (secret behind the SYSTEM boundary), else the local install-secret path.
         try
         {
@@ -207,6 +229,24 @@ public sealed class SettingsStore
             }
         }
         catch { /* seal is best-effort; a missing seal reads as Unsealed, never blocks the save */ }
+
+        try
+        {
+            SaveAuditSink?.Invoke(new SettingsSaveAudit(
+                DateTimeOffset.UtcNow,
+                SettingsChangeContext.Current ?? SettingsChangeAttribution.Unattributed(),
+                !string.Equals(priorJson, json, StringComparison.Ordinal),
+                priorProjection is null || !string.Equals(priorProjection, currentProjection, StringComparison.Ordinal),
+                ProjectionHash(priorProjection),
+                ProjectionHash(currentProjection)));
+        }
+        catch { /* evidence delivery must never corrupt or roll back a completed operator save */ }
+    }
+
+    private static string ProjectionHash(string? projection)
+    {
+        if (projection is null) return "none";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(projection)))[..16];
     }
 
     private static string SealPath(string path) => path + ".seal";

@@ -6,7 +6,7 @@ namespace Foreman.App.ComputerUse;
 
 /// <summary>
 /// Registers a SYSTEM-GLOBAL panic hotkey (default Ctrl+Alt+Shift+H) on a DEDICATED message-only window. Using a
-/// message-only window (not the dashboard) means the hotkey keeps firing even when Foreman has no focused window
+/// message-only window (not the dashboard) means the hotkey keeps firing even when TraceBrake has no focused window
 /// and, crucially, even if the dashboard/UI is busy or hung — the "give me my screen back" control must never be
 /// the thing that's wedged. Fires <paramref name="onPressed"/> on the UI thread when the chord is pressed.
 ///

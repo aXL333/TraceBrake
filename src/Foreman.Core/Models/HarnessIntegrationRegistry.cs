@@ -37,7 +37,7 @@ public static class HarnessIntegrationRegistry
             "codex-default",
             [],
             [],
-            "Add Foreman Agent Safety's HTTP MCP endpoint to ~/.codex/config.toml and the Foreman Agent Safety MCP Monitor section to ~/.codex/AGENTS.md, or use Foreman Agent Safety's Connect Agent window to write both automatically. Codex (CLI and Desktop) sends the bearer token from the FOREMAN_MCP_TOKEN_CODEX environment variable — set it to the token, then start Codex fresh (a new terminal, or relaunch the Desktop app). An inline http_headers Authorization is NOT applied by Codex.",
+            "Add TraceBrake's HTTP MCP endpoint to ~/.codex/config.toml and the TraceBrake MCP Monitor section to ~/.codex/AGENTS.md, or use TraceBrake's Connect Agent window to write both automatically. Codex (CLI and Desktop) sends the bearer token from the FOREMAN_MCP_TOKEN_CODEX environment variable — set it to the token, then start Codex fresh (a new terminal, or relaunch the Desktop app). An inline http_headers Authorization is NOT applied by Codex.",
             """
             [mcp_servers.foreman]
             url = "http://localhost:{port}/mcp"
@@ -50,7 +50,7 @@ public static class HarnessIntegrationRegistry
             "t3-code-default",
             [],
             [],
-            "Add Foreman Agent Safety's MCP endpoint to the underlying agent configured in T3 Code; monitor T3 Code itself as the control plane.",
+            "Add TraceBrake's MCP endpoint to the underlying agent configured in T3 Code; monitor T3 Code itself as the control plane.",
             """
             {
               "mcpServers": {
@@ -68,7 +68,7 @@ public static class HarnessIntegrationRegistry
             "opencode-default",
             [@".opencode\hooks\", ".opencode/hooks/"],
             [],
-            "Add Foreman Agent Safety's HTTP MCP endpoint to opencode.json under the mcp object.",
+            "Add TraceBrake's HTTP MCP endpoint to opencode.json under the mcp object.",
             """
             {
               "$schema": "https://opencode.ai/config.json",
@@ -90,7 +90,7 @@ public static class HarnessIntegrationRegistry
             "gemini-cli-default",
             [@".gemini\", ".gemini/"],
             [],
-            "Add Foreman Agent Safety's MCP endpoint to ~/.gemini/settings.json under mcpServers — note Gemini uses httpUrl (streamable HTTP), not url. Use Foreman's Connect Agent window to write it automatically.",
+            "Add TraceBrake's MCP endpoint to ~/.gemini/settings.json under mcpServers — note Gemini uses httpUrl (streamable HTTP), not url. Use TraceBrake's Connect Agent window to write it automatically.",
             """
             {
               "mcpServers": {
@@ -107,7 +107,7 @@ public static class HarnessIntegrationRegistry
             "github-copilot-default",
             [@".copilot\", ".copilot/"],
             [],
-            "Add Foreman Agent Safety's HTTP MCP endpoint to ~/.copilot/mcp-config.json under mcpServers. Use Foreman's Connect Agent window to write it automatically. (The terminal 'copilot' CLI — not the Windows/Edge Microsoft Copilot.)",
+            "Add TraceBrake's HTTP MCP endpoint to ~/.copilot/mcp-config.json under mcpServers. Use TraceBrake's Connect Agent window to write it automatically. (The terminal 'copilot' CLI — not the Windows/Edge Microsoft Copilot.)",
             """
             {
               "mcpServers": {
@@ -126,7 +126,7 @@ public static class HarnessIntegrationRegistry
             "cursor-default",
             [],
             [],
-            "Add Foreman Agent Safety's MCP endpoint to ~/.cursor/mcp.json under mcpServers (a remote server — identified by 'url', with NO 'type' field). Use Foreman's Connect Agent window to write it automatically, then restart Cursor or refresh the foreman server in Settings -> Tools & MCP.",
+            "Add TraceBrake's MCP endpoint to ~/.cursor/mcp.json under mcpServers (a remote server — identified by 'url', with NO 'type' field). Use TraceBrake's Connect Agent window to write it automatically, then restart Cursor or refresh the foreman server in Settings -> Tools & MCP.",
             """
             {
               "mcpServers": {
@@ -143,7 +143,7 @@ public static class HarnessIntegrationRegistry
             "lm-studio-default",
             [],
             [],
-            "Add Foreman Agent Safety's MCP endpoint to ~/.lmstudio/mcp.json under mcpServers. Caveat emptor: LM Studio's support for a headers (Authorization) block on a remote server is unverified — confirm in LM Studio's MCP panel that the connection authorizes.",
+            "Add TraceBrake's MCP endpoint to ~/.lmstudio/mcp.json under mcpServers. Caveat emptor: LM Studio's support for a headers (Authorization) block on a remote server is unverified — confirm in LM Studio's MCP panel that the connection authorizes.",
             """
             {
               "mcpServers": {

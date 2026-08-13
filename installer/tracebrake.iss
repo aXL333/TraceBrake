@@ -1,15 +1,18 @@
-; Inno Setup script for Foreman Agent Safety -- per-user, no-admin installer.
-; Build locally:   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=0.1.0 installer\foreman.iss
+; Inno Setup script for TraceBrake -- per-user, no-admin installer.
+; Build locally:   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=0.1.0 installer\tracebrake.iss
 ; CI passes the version via /DMyAppVersion=... (see .github/workflows/release.yml).
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
 #endif
-#define MyAppName "Foreman Agent Safety"
-#define MyAppInstallDirName "Foreman"
-#define MyAppPublisher "aXL333"
-#define MyAppURL "https://github.com/aXL333/Foreman"
-#define MyAppExeName "Foreman.exe"
+#ifndef MyPayloadDir
+  #define MyPayloadDir "..\publish"
+#endif
+#define MyAppName "TraceBrake"
+#define MyAppInstallDirName "TraceBrake"
+#define MyAppPublisher "Blue Heeler Software"
+#define MyAppURL "https://tracebrake.com"
+#define MyAppExeName "TraceBrake.exe"
 
 [Setup]
 ; Stable GUID so upgrades replace the existing install rather than stacking.
@@ -22,19 +25,20 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}/releases
 ; Install per-user so no UAC prompt is required.
 PrivilegesRequired=lowest
-; Keep immutable program files separate from Foreman's mutable settings/vault/log data in
-; %LOCALAPPDATA%\Foreman. Inno retains the previous directory for existing upgrades.
+; Keep immutable program files separate from TraceBrake's mutable settings/vault/log data in
+; %LOCALAPPDATA%\TraceBrake. Inno retains the previous directory for existing Foreman upgrades.
 DefaultDirName={localappdata}\Programs\{#MyAppInstallDirName}
 DisableProgramGroupPage=yes
 OutputDir=Output
-OutputBaseFilename=Foreman-Agent-Safety-Setup-{#MyAppVersion}
+OutputBaseFilename=TraceBrake-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\src\Foreman.App\Resources\foreman.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Foreman already owns this named mutex. Refuse install/upgrade while the tray app is running rather than
+; Stable legacy mutex shared by Foreman and TraceBrake. Refuse install/upgrade while the tray app is running rather than
 ; replacing a live executable or leaving a reboot-pending mixture of versions.
 AppMutex=ForemanSingleInstanceMutex
 
@@ -42,12 +46,12 @@ AppMutex=ForemanSingleInstanceMutex
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "startup";     Description: "Start Foreman Agent Safety automatically when I sign in"; GroupDescription: "Startup:";   Flags: checkedonce
+Name: "startup";     Description: "Start TraceBrake automatically when I sign in"; GroupDescription: "Startup:";   Flags: checkedonce
 Name: "desktopicon"; Description: "Create a desktop shortcut";                  GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
 ; Copy everything the publish step produced (single-file exe plus any extracted natives).
-Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyPayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 ; Prevent removed extension/helper files from surviving an upgrade and tripping the exact runtime manifest.
@@ -56,6 +60,11 @@ Type: filesandordirs; Name: "{app}\sidecar"
 Type: filesandordirs; Name: "{app}\guardian"
 Type: filesandordirs; Name: "{app}\cu-sidecar"
 Type: filesandordirs; Name: "{app}\cu-pilot"
+; The main executable changed name. Remove the old binary and shortcuts only after the stable mutex has
+; confirmed the tray app is not running; helper executable names remain intentionally compatible.
+Type: files; Name: "{app}\Foreman.exe"
+Type: files; Name: "{autoprograms}\Foreman Agent Safety.lnk"
+Type: files; Name: "{userdesktop}\Foreman Agent Safety.lnk"
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}";   Filename: "{app}\{#MyAppExeName}"
@@ -64,11 +73,15 @@ Name: "{userdesktop}\{#MyAppName}";    Filename: "{app}\{#MyAppExeName}"; Tasks:
 [Registry]
 ; Optional run-at-login entry under HKCU (no admin needed); removed on uninstall.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
-    ValueName: "Foreman Agent Safety"; ValueData: """{app}\{#MyAppExeName}"""; \
+    ValueName: "TraceBrake"; ValueData: """{app}\{#MyAppExeName}"""; \
     Flags: uninsdeletevalue; Tasks: startup
+; Remove every legacy Run alias whether or not the startup task is selected on this upgrade.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Foreman Agent Safety"; Flags: deletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "ForemanAgentSafety"; Flags: deletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Foreman"; Flags: deletevalue
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch Foreman Agent Safety now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch TraceBrake now"; Flags: nowait postinstall skipifsilent
 
 [Code]
 // If the opt-in hardened guardian (a LocalSystem service) was installed, remove it BEFORE files are deleted.

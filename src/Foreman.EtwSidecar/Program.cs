@@ -7,7 +7,7 @@ using Foreman.Core.Notifications;
 using Foreman.EtwSidecar;
 using Microsoft.Diagnostics.Tracing.Session;
 
-// Foreman elevated sidecar (capture-only). The ONLY elevated component.
+// TraceBrake elevated sidecar (capture-only). The ONLY elevated component.
 //   Usage: Foreman.EtwSidecar --pipe <name> --nonce <token> --parent <pid>
 //          [--capture-net] [--audit-decoys <pathsFile>] [--wake-requests]
 // It connects to the app's local pipe, proves itself with the nonce, then streams self-describing JSON
@@ -39,7 +39,7 @@ static int Run(string[] args)
     if (string.IsNullOrEmpty(pipeName) || string.IsNullOrEmpty(nonce)) return 2;   // bad args
     if (TraceEventSession.IsElevated() != true) return 3;                          // must be admin
 
-    // We're elevated — register Foreman's Windows Event Log source (one-time, admin-only) so the non-elevated
+    // We're elevated — register TraceBrake's Windows Event Log source (one-time, admin-only) so the non-elevated
     // main app can emit its blackbox-handoff entries. Best-effort: never let this break the sidecar's real job.
     TryRegisterEventSource();
 
@@ -143,7 +143,7 @@ static bool TryWrite<T>(StreamWriter writer, T message)
 
 static string? Next(string[] args, ref int i) => i + 1 < args.Length ? args[++i] : null;
 
-// One-time registration of Foreman's Windows Event Log source (needs admin — which we are). Harmless if it
+// One-time registration of TraceBrake's Windows Event Log source (needs admin — which we are). Harmless if it
 // already exists; swallowed on any failure so the sidecar's capture/audit duties are never affected.
 static void TryRegisterEventSource()
 {

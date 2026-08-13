@@ -287,14 +287,14 @@ public sealed class ProcessTreeTracker
 
     /// <summary>
     /// Terminates every tracked process in the matching harness tree. Driven by the LIVE tree
-    /// (not a stale alert), so each record is current by construction. Skips Foreman itself and
+    /// (not a stale alert), so each record is current by construction. Skips TraceBrake itself and
     /// the low system PIDs. Silently ignores processes that have already exited.
     /// </summary>
     public void KillHarness(string harnessType)
     {
         foreach (var rec in GetTreeByHarnessType(harnessType).ToList())
         {
-            if (KillGuard.IsProtected(rec.Pid, rec.Name)) continue;   // never the OS, the shell, AV, or Foreman's own
+            if (KillGuard.IsProtected(rec.Pid, rec.Name)) continue;   // never the OS, the shell, AV, or TraceBrake's own
             try
             {
                 using var proc = Process.GetProcessById(rec.Pid);

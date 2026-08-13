@@ -48,13 +48,13 @@ public sealed class ForemanSettings
     /// in-process only, never offered over MCP (spec INV-7). When set, the App launches and handshakes the sidecar.</summary>
     public bool CuDesktopEnabled { get; set; }
 
-    /// <summary>Opt-in: enable the Local Agent Host - Foreman launches a signed Pilot shim so a LOCAL AI agent can
+    /// <summary>Opt-in: enable the Local Agent Host - TraceBrake launches a signed Pilot shim so a LOCAL AI agent can
     /// pilot the desktop through the audited path (spec L3+; never the network, never MCP). OFF by default; arming
     /// additionally requires an enrolled presence credential (INV-16). When set, the App launches + handshakes the
     /// pilot shim.</summary>
     public bool CuDriverHostEnabled { get; set; }
 
-    /// <summary>The local AI agent Foreman launches for the agent host (HOP B): the executable/command, its arguments,
+    /// <summary>The local AI agent TraceBrake launches for the agent host (HOP B): the executable/command, its arguments,
     /// and working dir. OPERATOR config only - never agent-supplied. Empty Command = run HOP A only (no agent). The
     /// shim hands the launched agent the HOP B pipe name + session secret via its stdin (an inherited handle).</summary>
     public string? CuAgentCommand { get; set; }
@@ -68,7 +68,7 @@ public sealed class ForemanSettings
 
     /// <summary>
     /// Opt-in Android Debug Bridge modality. It is deliberately a bounded broker, not raw adb access: only enrolled
-    /// device serials and Foreman's fixed devices/screenshot/UI-dump/logcat/tap/type/swipe/key verbs are available.
+    /// device serials and TraceBrake's fixed devices/screenshot/UI-dump/logcat/install/tap/type/swipe/key verbs are available.
     /// Harness authority still comes from <see cref="CuDriver"/> plus the per-harness computer-use policy.
     /// </summary>
     public AdbBridgeSettings AdbBridge { get; set; } = new();
@@ -99,7 +99,7 @@ public sealed class ForemanSettings
     public bool ScanMcpTools { get; set; } = false;
 
     /// <summary>
-    /// Origins of paired Foreman browser extensions (e.g. "chrome-extension://&lt;id&gt;") allowed to reach the
+    /// Origins of paired TraceBrake browser extensions (e.g. "chrome-extension://&lt;id&gt;") allowed to reach the
     /// MCP endpoint in addition to loopback. Empty by default — populated by the extension pairing flow.
     /// Consumed by <see cref="Foreman.Core.Mcp.LoopbackRequestPolicy"/>. (Closed-loop spec.)
     /// </summary>
@@ -131,15 +131,15 @@ public sealed class ForemanSettings
     /// <summary>Minutes to wait for a reply before surfacing an "unanswered cleanup request" notice.</summary>
     public int IdleCleanupGraceMinutes { get; set; } = 15;
 
-    /// <summary>Per-harness cooldown between automatic cleanup requests, so Foreman never nags.</summary>
+    /// <summary>Per-harness cooldown between automatic cleanup requests, so TraceBrake never nags.</summary>
     public int IdleCleanupCooldownMinutes { get; set; } = 120;
 
     public string ProfilesDirectory { get; set; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman", "profiles");
+        Path.Combine(ProductIdentity.LocalDataRoot, "profiles");
 
     /// <summary>
     /// Harness IDs (matching KnownHarnesses.All[].Id, or "custom:exename.exe") that
-    /// should not be monitored.  Foreman still detects them for status display purposes
+    /// should not be monitored.  TraceBrake still detects them for status display purposes
     /// but will not emit hang/orphan/permission alerts for disabled harnesses.
     /// </summary>
     public HashSet<string> DisabledHarnesses { get; set; } = [];
@@ -215,7 +215,7 @@ public sealed class ForemanSettings
     public Foreman.Core.Alerts.AlertResponseSettings AlertResponses { get; set; } = new();
 
     /// <summary>
-    /// Game mode: when a fullscreen game/app is detected, pause Foreman's on-screen popups + alarm windows
+    /// Game mode: when a fullscreen game/app is detected, pause TraceBrake's on-screen popups + alarm windows
     /// (it keeps detecting/logging silently and shows a digest when you exit). See
     /// <see cref="Foreman.Core.Models.GameModePolicy"/>.
     /// </summary>
@@ -237,7 +237,7 @@ public sealed class ForemanSettings
 
     /// <summary>
     /// Credential-sweep burst aggregator: when one harness tree reads this many DISTINCT credential stores
-    /// within <see cref="CredentialSweepWindowSeconds"/>, Foreman fires a single Critical "credential-store
+    /// within <see cref="CredentialSweepWindowSeconds"/>, TraceBrake fires a single Critical "credential-store
     /// sweep" alert — the Miasma harvester fingerprint. Each individual read still alerts on its own.
     /// </summary>
     public int CredentialSweepDistinctThreshold { get; set; } = 4;
@@ -253,6 +253,12 @@ public sealed class ForemanSettings
     /// </summary>
     public Dictionary<string, int> HarnessTrust { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Shared Trust 1–5 capability profiles. A harness inherits the profile selected by <see cref="HarnessTrust"/>;
+    /// the legacy per-harness restriction dictionary below remains a restrictive override for compatibility.
+    /// </summary>
+    public UniversalTrustSettings UniversalTrust { get; set; } = new();
+
     /// <summary>Effective escalation thresholds for a harness: its Trust preset over the global baseline, or
     /// the global baseline when no Trust override is set. Consumed by BehaviorTracker per harness.</summary>
     public EscalationThresholds EffectiveThresholds(string harnessId)
@@ -261,7 +267,7 @@ public sealed class ForemanSettings
             : EscalationThresholds.FromGlobal(this);
 
     /// <summary>
-    /// How long an unanswered "Ask Harness" request stays <c>pending</c> before Foreman ages it out to
+    /// How long an unanswered "Ask Harness" request stays <c>pending</c> before TraceBrake ages it out to
     /// <c>expired</c> — the harness never connected, disconnected mid-request, or ignored the prompt. Expired
     /// requests are logged (never silently dropped) and a late reply is still accepted. <c>0</c> disables
     /// expiry (requests dangle until the count cap evicts them, the old behavior). Default 30 minutes.
@@ -269,7 +275,7 @@ public sealed class ForemanSettings
     public int AskHarnessTimeoutMinutes { get; set; } = 30;
 
     /// <summary>
-    /// Peer-PID binding for per-harness MCP tokens: Foreman attributes the connecting loopback process
+    /// Peer-PID binding for per-harness MCP tokens: TraceBrake attributes the connecting loopback process
     /// (peer-PID → harness) and compares it to the token's claimed harness. A MISMATCH (process X replayed
     /// harness Y's token) is ALWAYS logged Critical. This flag controls whether a mismatch is also BLOCKED
     /// (403). Default off (alert-only) so attribution accuracy can be observed on real connectors before
@@ -308,7 +314,7 @@ public sealed class ForemanSettings
 
     /// <summary>
     /// OS-event-log blackbox handoff: mirror lifecycle (start/stop/crash) + security-significant events to the
-    /// host OS event log (Windows Event Log / Linux journald) so Foreman's own record survives the app being
+    /// host OS event log (Windows Event Log / Linux journald) so TraceBrake's own record survives the app being
     /// killed or its files tampered. See <see cref="Notifications.OsEventLogForwarder"/>.
     /// </summary>
     public Notifications.OsEventLogSettings OsEventLog { get; set; } = new();
@@ -327,8 +333,17 @@ public sealed class ForemanSettings
             ? ids
             : Foreman.Core.Mcp.ModalityCatalog.DefaultAgentModalities;
 
+    /// <summary>Effective graded browser/desktop/ADB policy for this harness and its selected Trust level.</summary>
+    public TrustCapabilityProfile EffectiveTrustCapabilities(string harnessId)
+    {
+        var level = HarnessTrust.TryGetValue(harnessId, out var configured) ? Math.Clamp(configured, 1, 5) : 3;
+        var universal = (UniversalTrust ?? new UniversalTrustSettings()).ForLevel(level);
+        HarnessCapabilityRestrictions.TryGetValue(harnessId, out var legacy);
+        return universal.ApplyLegacyRestrictions(legacy);
+    }
+
     /// <summary>
-    /// Per-harness restrictions for high-risk MCP capability classes. Foreman can enforce these immediately for
+    /// Per-harness restrictions for high-risk MCP capability classes. TraceBrake can enforce these immediately for
     /// Foreman-brokered tools such as LiveWeave browser driving; third-party MCP servers are reported and the
     /// policy is delivered to the harness until a dedicated computer-use broker can enforce it directly.
     /// </summary>
@@ -341,18 +356,18 @@ public sealed class ForemanSettings
 
 public sealed class AdbBridgeSettings
 {
-    /// <summary>Off by default. Changes take effect after Foreman restarts.</summary>
+    /// <summary>Off by default. Changes are revoked and re-applied live after a successful settings save.</summary>
     public bool Enabled { get; set; }
 
     /// <summary>
-    /// Absolute operator-selected path to adb/adb.exe. Foreman never searches PATH because an agent-controlled PATH
+    /// Absolute operator-selected path to adb/adb.exe. TraceBrake never searches PATH because an agent-controlled PATH
     /// entry could turn bridge activation into arbitrary process execution.
     /// </summary>
     public string? ExecutablePath { get; set; }
 
     /// <summary>
     /// SHA-256 of the operator-enrolled adb binary. The runner verifies it and keeps the file write/delete-locked while
-    /// Foreman is active, so a same-user process cannot replace the trusted executable after enrolment.
+    /// TraceBrake is active, so a same-user process cannot replace the trusted executable after enrolment.
     /// </summary>
     public string? ExecutableSha256 { get; set; }
 

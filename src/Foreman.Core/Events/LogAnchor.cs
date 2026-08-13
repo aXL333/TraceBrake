@@ -9,10 +9,10 @@ namespace Foreman.Core.Events;
 /// An EXTERNAL, out-of-band witness of the event-log chain head, committed to the OS event log (an append-only
 /// store the same-user agent can't surgically revert — there is no API to delete a single Windows event entry,
 /// only to clear a whole channel, which is itself elevated + conspicuous). It records the chain head that was on
-/// disk the last time Foreman wrote a lifecycle anchor (at clean stop, and at startup).
+/// disk the last time TraceBrake wrote a lifecycle anchor (at clean stop, and at startup).
 ///
 /// WHY THIS EXISTS — the gap the in-file chain provably can't close: a rogue same-user agent can snapshot the
-/// whole on-disk log (<c>events.log.jsonl</c> + its head seal), let Foreman record incriminating events, then
+/// whole on-disk log (<c>events.log.jsonl</c> + its head seal), let TraceBrake record incriminating events, then
 /// restore the snapshot. The restored state is internally consistent, so <see cref="EventLogStore.Verify"/>
 /// passes — the agent rolled BOTH the chain and its head back together. The external anchor defeats exactly this:
 /// on launch we check that the head we last witnessed EXTERNALLY is still present in the on-disk chain. A rollback
@@ -43,7 +43,7 @@ public sealed record LogAnchor(string HeadHash, long Count, string? Seal = null)
     public string Format()
     {
         var sealPart = string.IsNullOrEmpty(Seal) ? string.Empty : $" seal={Seal}";
-        return $"Foreman log-chain anchor - head={HeadHash} count={Count.ToString(CultureInfo.InvariantCulture)}{sealPart}. " +
+        return $"TraceBrake log-chain anchor - head={HeadHash} count={Count.ToString(CultureInfo.InvariantCulture)}{sealPart}. " +
                "External rollback witness; do not edit.";
     }
 
@@ -78,7 +78,7 @@ public enum AnchorVerdict
     NoPriorAnchor,
     /// <summary>The externally-witnessed head is still present in the on-disk chain — clean cycle or honest forward growth.</summary>
     Match,
-    /// <summary>The externally-witnessed head is GONE from the on-disk chain — the log was reverted/rewritten while Foreman was down.</summary>
+    /// <summary>The externally-witnessed head is GONE from the on-disk chain — the log was reverted/rewritten while TraceBrake was down.</summary>
     Rolledback,
     /// <summary>A candidate anchor carried a seal that FAILED verification under the pinned key, and no authentically
     /// sealed anchor remained — a same-user agent forged a counterfeit external witness (so a rollback may be masked).</summary>

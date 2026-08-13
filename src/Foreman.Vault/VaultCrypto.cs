@@ -62,7 +62,7 @@ internal static class VaultCrypto
     public static string Decrypt(string envelopeJson, string masterPassword, byte[] keyComponent)
     {
         var env = JsonSerializer.Deserialize<Envelope>(envelopeJson) ?? throw new FormatException("not a vault file");
-        if (env.Magic != Magic) throw new FormatException("not a Foreman vault file");
+        if (env.Magic != Magic) throw new FormatException("not a TraceBrake vault file");
         if (env.Version != Version) throw new NotSupportedException($"unsupported vault version {env.Version}");
 
         var salt = Convert.FromBase64String(env.SaltB64);

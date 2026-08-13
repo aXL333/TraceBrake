@@ -43,13 +43,13 @@ public partial class SettingsView : UserControl
         {
             GuardianTrust.PublisherSigned => "Active (LocalSystem, publisher authenticated).",
             GuardianTrust.PathHashPinned => "Active (LocalSystem, unsigned development path + hash pin).",
-            "legacy_or_unavailable" => "Installed, but unavailable or legacy; Foreman is ignoring it.",
+            "legacy_or_unavailable" => "Installed, but unavailable or legacy; TraceBrake is ignoring it.",
             _ => "Off (per-user, tamper-evident).",
         };
     }
 
     // Install / remove the opt-in guardian service. Immediate action (one UAC), independent of the Save button —
-    // mirrors the presence-lock pattern. Activation of hardened sealing takes effect on the next Foreman restart.
+    // mirrors the presence-lock pattern. Activation of hardened sealing takes effect on the next TraceBrake restart.
     private void HardenedGuardianClick(object sender, RoutedEventArgs e)
     {
         if (GuardianControl.IsInstalled)
@@ -57,12 +57,12 @@ public partial class SettingsView : UserControl
             if (MessageBox.Show(
                     "Disable the hardened guardian? This removes the LocalSystem service and returns the tamper-seal " +
                     "to the per-user (tamper-evident, not tamper-proof) mode. One UAC prompt.",
-                    "Foreman Agent Safety — Hardened guardian", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                    "TraceBrake — Hardened guardian", MessageBoxButton.YesNo, MessageBoxImage.Warning)
                 != MessageBoxResult.Yes)
                 return;
 
             var (ok, msg) = GuardianControl.Uninstall();
-            MessageBox.Show(msg, "Foreman Agent Safety — Hardened guardian", MessageBoxButton.OK,
+            MessageBox.Show(msg, "TraceBrake — Hardened guardian", MessageBoxButton.OK,
                 ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
             RefreshGuardian();
             return;
@@ -70,22 +70,22 @@ public partial class SettingsView : UserControl
 
         var signed = SidecarIntegrity.SelfIsSigned();
         var posture = signed
-            ? "This signed build will authenticate future Foreman versions from the same verified publisher."
-            : "This unsigned build will use a development-only Foreman.exe path + SHA-256 pin. It prevents arbitrary " +
+            ? "This signed build will authenticate future TraceBrake versions from the same verified publisher."
+            : "This unsigned build will use a development-only TraceBrake.exe path + SHA-256 pin. It prevents arbitrary " +
               "local callers, but is NOT publisher-authenticated or a commercial tamper-proof boundary. Re-enable the " +
               "guardian after a certificate is added to upgrade automatically to publisher trust.";
         if (MessageBox.Show(
                 "Install the hardened guardian?\n\n" +
-                "Registers a small LocalSystem Windows service that holds Foreman's tamper-seal key outside the normal " +
+                "Registers a small LocalSystem Windows service that holds TraceBrake's tamper-seal key outside the normal " +
                 $"user process. {posture}\n\nOne UAC prompt; you can disable it here later.",
-                "Foreman Agent Safety — Enable hardened guardian", MessageBoxButton.OKCancel, MessageBoxImage.Question)
+                "TraceBrake — Enable hardened guardian", MessageBoxButton.OKCancel, MessageBoxImage.Question)
             != MessageBoxResult.OK)
             return;
 
         var (ok2, msg2) = GuardianControl.Install();
         MessageBox.Show(
-            msg2 + (ok2 ? "\n\nRestart Foreman Agent Safety to activate hardened sealing." : ""),
-            "Foreman Agent Safety — Hardened guardian", MessageBoxButton.OK,
+            msg2 + (ok2 ? "\n\nRestart TraceBrake to activate hardened sealing." : ""),
+            "TraceBrake — Hardened guardian", MessageBoxButton.OK,
             ok2 ? MessageBoxImage.Information : MessageBoxImage.Warning);
         RefreshGuardian();
     }
@@ -107,11 +107,12 @@ public partial class SettingsView : UserControl
     // saving leaves the settings seal unchanged.
     private void PinEveryTapClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = Security.SettingsChangeUiScope.Begin("change-presence-verification-mode");
         _settings.PresenceLock.RequireUserVerification = PinEveryTapCheck.IsChecked == true;
         try { SettingsStore.Save(_settings); }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not save the setting: {ex.Message}", "Foreman Agent Safety — Presence lock",
+            MessageBox.Show($"Could not save the setting: {ex.Message}", "TraceBrake — Presence lock",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -120,10 +121,11 @@ public partial class SettingsView : UserControl
     // owner window. Acts immediately + persists; independent of the Save button below.
     private async void PresenceLockClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = Security.SettingsChangeUiScope.Begin("change-presence-lock");
         if (Security.PresenceGuard.IsEnabled)
         {
             var (ok, msg) = await Security.PresenceGuard.DisableAsync();
-            MessageBox.Show(msg, "Foreman Agent Safety — Presence lock", MessageBoxButton.OK,
+            MessageBox.Show(msg, "TraceBrake — Presence lock", MessageBoxButton.OK,
                 ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
             RefreshPresenceLock();
             return;
@@ -134,23 +136,23 @@ public partial class SettingsView : UserControl
             MessageBox.Show(
                 "No authenticator available. Set up Windows Hello (a PIN or biometric in Windows Settings → " +
                 "Accounts → Sign-in options) or attach a FIDO2 security key, then try again.",
-                "Foreman Agent Safety — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         var choice = MessageBox.Show(
-            "Require a Windows Hello or security-key tap to WEAKEN Foreman?\n\n" +
-            "YES = Strict (also requires a tap to QUIT Foreman — most secure, but can be annoying)\n" +
+            "Require a Windows Hello or security-key tap to WEAKEN TraceBrake?\n\n" +
+            "YES = Strict (also requires a tap to QUIT TraceBrake — most secure, but can be annoying)\n" +
             "NO = Standard (recommended)\n" +
             "Cancel = don't enable",
-            "Foreman Agent Safety — Enable presence lock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            "TraceBrake — Enable presence lock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         if (choice == MessageBoxResult.Cancel) return;
 
         var scope = choice == MessageBoxResult.Yes
             ? Foreman.Core.Security.LockScope.Strict
             : Foreman.Core.Security.LockScope.Standard;
         var (ok2, msg2) = await Security.PresenceGuard.EnableAsync(scope);
-        MessageBox.Show(msg2, "Foreman Agent Safety — Presence lock", MessageBoxButton.OK,
+        MessageBox.Show(msg2, "TraceBrake — Presence lock", MessageBoxButton.OK,
             ok2 ? MessageBoxImage.Information : MessageBoxImage.Warning);
         RefreshPresenceLock();
     }
@@ -236,50 +238,51 @@ public partial class SettingsView : UserControl
 
     private async void SaveClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = Security.SettingsChangeUiScope.Begin("save-main-settings");
         // ── MCP ─────────────────────────────────────────────────────────────
         if (!int.TryParse(McpPortBox.Text, out var port) || port is < 1024 or > 65535)
-        { MessageBox.Show("Port must be 1024–65535.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Port must be 1024–65535.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         // ── Process thresholds ───────────────────────────────────────────────
         if (!int.TryParse(HangBox.Text, out var hang) || hang < 1)
-        { MessageBox.Show("Hang threshold must be ≥ 1 minute.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Hang threshold must be ≥ 1 minute.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(HangRealertBox.Text, out var hangRealert) || hangRealert < 0)
-        { MessageBox.Show("Hang re-alert cooldown must be ≥ 0 minutes.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Hang re-alert cooldown must be ≥ 0 minutes.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(SuppressBox.Text, out var suppressMin) || suppressMin < 0)
-        { MessageBox.Show("Coalesce-repeats window must be ≥ 0 minutes.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Coalesce-repeats window must be ≥ 0 minutes.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(IdleCleanupAfterBox.Text, out var idleAfter) || idleAfter < 5)
-        { MessageBox.Show("Idle cleanup threshold must be ≥ 5 minutes.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Idle cleanup threshold must be ≥ 5 minutes.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         // ── Escalation thresholds ────────────────────────────────────────────
         if (!int.TryParse(AlertMediumBox.Text, out var alertMed) || alertMed < 1)
-        { MessageBox.Show("Alert medium threshold must be ≥ 1.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Alert medium threshold must be ≥ 1.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(AlarmHighBox.Text, out var alarmHigh) || alarmHigh < 1)
-        { MessageBox.Show("Alarm high threshold must be ≥ 1.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Alarm high threshold must be ≥ 1.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(AlarmRulesBox.Text, out var alarmRules) || alarmRules < 1)
-        { MessageBox.Show("Alarm rules threshold must be ≥ 1.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Alarm rules threshold must be ≥ 1.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(AlarmCatsBox.Text, out var alarmCats) || alarmCats < 1)
-        { MessageBox.Show("Alarm category threshold must be ≥ 1.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Alarm category threshold must be ≥ 1.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(EmergencyTotalBox.Text, out var emergencyTotal) || emergencyTotal < 1)
-        { MessageBox.Show("Emergency total threshold must be ≥ 1.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Emergency total threshold must be ≥ 1.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(AutoResponseCooldownBox.Text, out var arCooldown) || arCooldown < 0)
-        { MessageBox.Show("Auto-response re-fire cooldown must be ≥ 0 minutes.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Auto-response re-fire cooldown must be ≥ 0 minutes.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         if (!int.TryParse(ScheduledAuditEveryBox.Text, out var auditEvery) || auditEvery < 0)
-        { MessageBox.Show("Scheduled-audit alert count must be ≥ 0.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Scheduled-audit alert count must be ≥ 0.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         if (!int.TryParse(ScheduledAuditIntervalBox.Text, out var auditInterval) || auditInterval < 0)
-        { MessageBox.Show("Scheduled-audit interval must be ≥ 0 minutes.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Scheduled-audit interval must be ≥ 0 minutes.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         if (!int.TryParse(ScheduledAuditCooldownBox.Text, out var auditCooldown) || auditCooldown < 0)
-        { MessageBox.Show("Scheduled-audit cooldown must be ≥ 0 minutes.", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Scheduled-audit cooldown must be ≥ 0 minutes.", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         if (ScheduledAuditCheck.IsChecked == true && auditEvery == 0 && auditInterval == 0)
-        { MessageBox.Show("Enable at least one scheduled-audit trigger (alert count or interval).", "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        { MessageBox.Show("Enable at least one scheduled-audit trigger (alert count or interval).", "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
         var adbEnabled = AdbEnabledCheck.IsChecked == true;
         var adbPath = AdbPathBox.Text.Trim();
@@ -290,7 +293,7 @@ public partial class SettingsView : UserControl
         if (adbEnabled && (!Path.IsPathFullyQualified(adbPath) || !File.Exists(adbPath)))
         {
             MessageBox.Show("Choose an existing adb executable using its absolute path.",
-                "Foreman Agent Safety — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         string? adbHash = null;
@@ -300,7 +303,7 @@ public partial class SettingsView : UserControl
             catch (Exception ex)
             {
                 MessageBox.Show($"Could not hash-pin adb.exe: {ex.Message}",
-                    "Foreman Agent Safety — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "TraceBrake — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
         }
@@ -308,7 +311,7 @@ public partial class SettingsView : UserControl
         if (invalidSerial is not null)
         {
             MessageBox.Show($"'{invalidSerial}' is not a valid ADB device serial.",
-                "Foreman Agent Safety — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -348,8 +351,8 @@ public partial class SettingsView : UserControl
                 forcePresence: true, freshTap: true))
         {
             MessageBox.Show(
-                "The Android bridge was not changed. Enrol and enable Foreman's presence lock, then approve the fresh verification prompt.",
-                "Foreman Agent Safety — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "The Android bridge was not changed. Enrol and enable TraceBrake's presence lock, then approve the fresh verification prompt.",
+                "TraceBrake — Android bridge", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -410,6 +413,7 @@ public partial class SettingsView : UserControl
 
         // ── Start with Windows (registry, not settings JSON) ─────────────────
         var startupWanted = StartWithWindowsCheck.IsChecked == true;
+        string? startupFailureStatus = null;
         try
         {
             if (startupWanted != StartupManager.IsEnabled())
@@ -418,17 +422,22 @@ public partial class SettingsView : UserControl
             // If they just enabled it from a drive that may be absent at sign-in (removable / network / a
             // secondary disk like W:), say so now — that's the silent "didn't start at boot" trap.
             if (startupWanted && StartupManager.GetDriveWarning() is { } warn)
-                MessageBox.Show(warn, "Foreman Agent Safety — start with Windows",
+                MessageBox.Show(warn, "TraceBrake — start with Windows",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Couldn't update the Windows startup entry: {ex.Message}", "Foreman Agent Safety",
+            // Do not leave the checkbox or the final status claiming a change that Windows rejected. Re-read the
+            // registry (the source of truth) so the UI immediately returns to the actual startup posture.
+            var startupActuallyEnabled = StartupManager.IsEnabled();
+            StartWithWindowsCheck.IsChecked = startupActuallyEnabled;
+            startupFailureStatus = $"Settings saved; Windows startup remains {(startupActuallyEnabled ? "on" : "off")}.";
+            MessageBox.Show($"Couldn't update the Windows startup entry: {ex.Message}", "TraceBrake",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         if (portChanged)
-            MessageBox.Show("Port change takes effect after restart.", "Foreman Agent Safety",
+            MessageBox.Show("Port change takes effect after restart.", "TraceBrake",
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
         // Apply the elevation toggle (starts/stops the sidecar; enabling prompts UAC).
@@ -445,7 +454,7 @@ public partial class SettingsView : UserControl
             _onAdbBridgeChanged?.Invoke();
 
         // Hosted as a tab (no window to close) — confirm in place instead.
-        SavedStatus.Text = "Saved.";
+        SavedStatus.Text = startupFailureStatus ?? "Saved.";
     }
 
     private void BrowseAdbClick(object sender, RoutedEventArgs e)
@@ -570,7 +579,7 @@ public partial class SettingsView : UserControl
                     ? $"  Retired {reval.Reclaimed.Count} slot(s) you reclaimed for real credentials (left untouched)." : "";
                 MessageBox.Show(
                     $"Planted {plant.Planted.Count} decoy credential file(s); skipped {plant.SkippedExisting.Count} path(s) you already use.{retired}",
-                    "Foreman Agent Safety — Decoy credentials", MessageBoxButton.OK, MessageBoxImage.Information);
+                    "TraceBrake — Decoy credentials", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else if (dc.Enabled)
             {
@@ -584,13 +593,13 @@ public partial class SettingsView : UserControl
                 dc.PlantedPaths = [];
                 if (wasEnabled)
                     MessageBox.Show($"Removed {removed.Count} decoy credential file(s).",
-                        "Foreman Agent Safety — Decoy credentials", MessageBoxButton.OK, MessageBoxImage.Information);
+                        "TraceBrake — Decoy credentials", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Couldn't update decoy credentials: {ex.Message}",
-                "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
         // B9 polish: arm the (possibly just-minted) per-install decoy sentinel for cred-040 detection, live — no restart.

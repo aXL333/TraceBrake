@@ -16,7 +16,7 @@ namespace Foreman.EtwSidecar;
 /// Elevated decoy read-auditing. Places a SACL audit ACE (audit successful ReadData by Everyone) on each
 /// decoy credential file, enables the Windows "Audit File System" subcategory if it isn't already on, and
 /// tails the Security log for Event 4663 (object access). Any read of a tracked decoy by a process other
-/// than Foreman becomes a <see cref="DecoyReadMessage"/> the sidecar streams to the app.
+/// than TraceBrake becomes a <see cref="DecoyReadMessage"/> the sidecar streams to the app.
 ///
 /// All of this needs admin (the sidecar is the only elevated component). Cleanup is exact: it removes only the
 /// audit ACEs it owns — the ones it added this run, plus any identical Everyone/ReadData/Success ACE it adopted
@@ -213,13 +213,13 @@ internal sealed class DecoyAudit : IDisposable
             {
                 DeleteAuditPolMarkerIfOwned();
                 TryDisableFileSystemAuditing();
-                throw new IOException("Could not persist Foreman's audit-policy ownership lease.");
+                throw new IOException("Could not persist TraceBrake's audit-policy ownership lease.");
             }
             _weEnabledAuditPol = true;
             return;
         }
 
-        // The policy was already enabled. Reclaim it only from a fresh, ACL-authenticated Foreman lease. An absent,
+        // The policy was already enabled. Reclaim it only from a fresh, ACL-authenticated TraceBrake lease. An absent,
         // malformed, or stale marker means another tool or administrator may own the policy, so leave it untouched.
         _weEnabledAuditPol = inheritedLease && TryWriteAuditPolMarker();
     }

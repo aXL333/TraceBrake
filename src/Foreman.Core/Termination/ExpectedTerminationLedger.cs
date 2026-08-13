@@ -1,7 +1,7 @@
 namespace Foreman.Core.Termination;
 
 /// <summary>
-/// The record of terminations Foreman BROKERED on a harness's behalf (the request_process_kill tool). It is what
+/// The record of terminations TraceBrake BROKERED on a harness's behalf (the request_process_kill tool). It is what
 /// lets the detection layer tell an AUTHORISED kill from a raw, un-attributed one — the whole "authed = quiet,
 /// raw = loud" inversion.
 ///
@@ -14,7 +14,7 @@ namespace Foreman.Core.Termination;
 /// </summary>
 public sealed class ExpectedTerminationLedger
 {
-    /// <summary>One brokered termination: the target, who asked, why, and when Foreman recorded it.</summary>
+    /// <summary>One brokered termination: the target, who asked, why, and when TraceBrake recorded it.</summary>
     public sealed record Entry(int Pid, DateTimeOffset? StartTime, string ByHarness, string Reason, DateTimeOffset At);
 
     private readonly object _gate = new();
@@ -31,7 +31,7 @@ public sealed class ExpectedTerminationLedger
         _now = now ?? (() => DateTimeOffset.UtcNow);
     }
 
-    /// <summary>Record that <paramref name="byHarness"/> had Foreman terminate <paramref name="pid"/>. Call this
+    /// <summary>Record that <paramref name="byHarness"/> had TraceBrake terminate <paramref name="pid"/>. Call this
     /// BEFORE issuing the kill so the entry is in place when the termination events fire moments later.</summary>
     public void Record(int pid, DateTimeOffset? startTime, string byHarness, string reason)
     {

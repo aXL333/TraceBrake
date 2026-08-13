@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Foreman LiveWeave",
+  "name": "TraceBrake LiveWeave",
   "version": "0.4.2",
-  "description": "Visual website workspace for creating, improving, and reworking pages through Foreman harnesses or on-device Nano.",
+  "description": "Visual website workspace for creating, improving, and reworking pages through TraceBrake harnesses or on-device Nano.",
   "permissions": ["sidePanel", "storage", "alarms", "offscreen", "activeTab", "scripting"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "content_security_policy": {
@@ -18,7 +18,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Open Foreman LiveWeave",
+    "default_title": "Open TraceBrake LiveWeave",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"

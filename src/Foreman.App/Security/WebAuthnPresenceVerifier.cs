@@ -14,13 +14,13 @@ namespace Foreman.App.Security;
 ///
 /// Two Win32 realities are handled here: the calls are SYNCHRONOUS/blocking (run off the UI thread via
 /// Task.Run, or the app freezes), and they need a valid FOREGROUND HWND to parent the native dialog — the tray
-/// app has no main window, so we use the active Foreman window when one is up (the dialog that triggered the
+/// app has no main window, so we use the active TraceBrake window when one is up (the dialog that triggered the
 /// weakening) or spin a transient off-screen foreground window for tray-initiated actions (enroll / Exit).
 /// </summary>
 public sealed class WebAuthnPresenceVerifier : IPresenceVerifier
 {
     private const string RpId = "foreman.local";
-    private const string RpName = "Foreman Agent Safety";
+    private const string RpName = "TraceBrake";
 
     public bool IsAvailable
     {
@@ -65,7 +65,7 @@ public sealed class WebAuthnPresenceVerifier : IPresenceVerifier
         catch (Exception ex) { Foreman.App.CrashLog.Note("WebAuthn verify", ex); return PresenceResult.Fail($"WebAuthn error: {ex.GetType().Name}: {ex.Message}"); }
     }
 
-    // UI thread: an HWND to parent the native dialog — the active Foreman window, else a transient foreground one.
+    // UI thread: an HWND to parent the native dialog — the active TraceBrake window, else a transient foreground one.
     private static (IntPtr Hwnd, Window? Transient) AcquireHwnd()
     {
         var app = Application.Current;
@@ -77,7 +77,7 @@ public sealed class WebAuthnPresenceVerifier : IPresenceVerifier
             if (h != IntPtr.Zero) { SetForegroundWindow(h); return (h, null); }   // best-effort: surface the native dialog
         }
 
-        // No Foreman window up (tray-initiated): WebAuthn needs an ON-SCREEN, VISIBLE owner — an off-screen window
+        // No TraceBrake window up (tray-initiated): WebAuthn needs an ON-SCREEN, VISIBLE owner — an off-screen window
         // is rejected / shows the dialog where you can't reach it — so a tiny centered window, never off-screen.
         var transient = new Window
         {

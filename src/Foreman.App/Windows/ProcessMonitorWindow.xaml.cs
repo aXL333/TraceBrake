@@ -142,7 +142,7 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
             MessageBox.Show(
                 "No SHA-256 yet for this process's executable — it may still be hashing in the background, " +
                 "or the file path is empty/unreadable at this privilege level.",
-                "Foreman Agent Safety — VirusTotal", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — VirusTotal", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CopyHashClick(object sender, RoutedEventArgs e)
@@ -167,12 +167,12 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
             MessageBox.Show(
                 "Select a row that belongs to a harness first — the cleanup request goes to the whole agent, " +
                 "asking it to checkpoint work, stop leftover children, and reply or exit.",
-                "Foreman Agent Safety — Self-cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Self-cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var (ok, msg) = _requestCleanup(harnessId);
-        MessageBox.Show(msg, "Foreman Agent Safety — Self-cleanup",
+        MessageBox.Show(msg, "TraceBrake — Self-cleanup",
             MessageBoxButton.OK, ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 
@@ -188,7 +188,7 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not open the browser.\n\n{ex.Message}", "Foreman Agent Safety",
+            MessageBox.Show($"Could not open the browser.\n\n{ex.Message}", "TraceBrake",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

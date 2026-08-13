@@ -1,7 +1,7 @@
 namespace Foreman.Core.Security;
 
 /// <summary>
-/// The watchdog-weakening actions a rogue or prompt-injected agent would use to blind Foreman or erase its
+/// The watchdog-weakening actions a rogue or prompt-injected agent would use to blind TraceBrake or erase its
 /// tracks. The presence lock (P3) makes the gated ones require a hardware user-presence tap (Windows
 /// Hello/PIN, passkey, YubiKey, U2F) — the one thing a same-user process can't satisfy programmatically.
 /// </summary>
@@ -15,7 +15,7 @@ public enum WeakeningAction
     ClearOrRotateLog,
     EditHarnessSysprompt,
     RelaxHarnessCapabilityRestriction,
-    ResumeComputerUse,      // un-halt Foreman-mediated computer/browser use after a panic STOP
+    ResumeComputerUse,      // un-halt TraceBrake-mediated computer/browser use after a panic STOP
     BindCuWindow,           // bind the desktop CU target window (operator gesture; spec INV-10/INV-17)
     EnrollLocalAgentHost,   // authorize a local AI agent to drive desktop CU (spec INV-16)
     EnrollAdbBridge,        // authorize an adb executable + external Android device set

@@ -15,7 +15,7 @@ namespace Foreman.App.ComputerUse;
 ///
 /// HONEST LIMIT (review finding): this makes the App the only *intended* writer, not an absolute one. A same-user
 /// process that gets PROCESS_VM_WRITE or PROCESS_DUP_HANDLE on the App can write its mapped pages (or pull the App's
-/// read-write handle) directly - but that is the general "an attacker who can write Foreman's own process memory owns
+/// read-write handle) directly - but that is the general "an attacker who can write TraceBrake's own process memory owns
 /// Foreman" residual (identical to patching <c>CuPanicState</c> in-process), out of the bounded medium-IL threat model
 /// and not fixable by a memory map. INV-3's HARD floor is therefore the App-side TerminateProcess(sidecar) + BlockInput
 /// (Slice 4b), which does NOT depend on this byte; this map is the fast in-sidecar abort, not the floor.

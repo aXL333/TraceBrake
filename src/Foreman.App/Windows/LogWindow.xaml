@@ -44,7 +44,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="FOREMAN EVENT LOG" FontSize="11" FontWeight="Bold"
+                <TextBlock Grid.Column="0" Text="TRACEBRAKE EVENT LOG" FontSize="11" FontWeight="Bold"
                            Foreground="{StaticResource AccentBrush}"
                            VerticalAlignment="Center" Margin="0,0,16,0"
                            FontFamily="Segoe UI, Arial" />

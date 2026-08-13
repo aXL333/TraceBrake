@@ -4,9 +4,9 @@ using System.Runtime.Versioning;
 namespace Foreman.Guardian;
 
 /// <summary>
-/// Resolves the Foreman install reference from the live process that requested elevation. The caller supplies only
+/// Resolves the TraceBrake install reference from the live process that requested elevation. The caller supplies only
 /// a PID; the elevated guardian obtains the image path itself and requires its own executable to be the canonical
-/// <c>guardian\Foreman.Guardian.exe</c> staged beside that live Foreman process.
+/// <c>guardian\Foreman.Guardian.exe</c> staged beside that live TraceBrake process.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class GuardianInstallReference
@@ -21,7 +21,7 @@ internal static class GuardianInstallReference
         reason = string.Empty;
         if (foremanPid is null or <= 0)
         {
-            reason = "a live Foreman launcher PID is required.";
+            reason = "a live TraceBrake launcher PID is required.";
             return false;
         }
 
@@ -36,9 +36,10 @@ internal static class GuardianInstallReference
             }
 
             var canonicalForeman = CanonicalPath(imagePath);
-            if (!string.Equals(Path.GetFileName(canonicalForeman), "Foreman.exe", StringComparison.OrdinalIgnoreCase))
+            var launcherName = Path.GetFileName(canonicalForeman);
+            if (!IsSupportedLauncherName(launcherName))
             {
-                reason = "the live launcher is not Foreman.exe.";
+                reason = "the live launcher is not TraceBrake.exe (or the supported legacy Foreman.exe).";
                 return false;
             }
 
@@ -53,17 +54,17 @@ internal static class GuardianInstallReference
             var actualGuardian = CanonicalPath(guardianProcessPath);
             if (!string.Equals(expectedGuardian, actualGuardian, StringComparison.OrdinalIgnoreCase))
             {
-                reason = "the elevated guardian was not launched from Foreman's canonical staged guardian path.";
+                reason = "the elevated guardian was not launched from TraceBrake's canonical staged guardian path.";
                 return false;
             }
 
             foremanPath = canonicalForeman;
-            reason = "resolved Foreman.exe from the live launcher process.";
+            reason = $"resolved {launcherName} from the live launcher process.";
             return true;
         }
         catch (Exception ex)
         {
-            reason = $"the live Foreman launcher could not be verified: {ex.Message}";
+            reason = $"the live TraceBrake launcher could not be verified: {ex.Message}";
             return false;
         }
     }
@@ -78,6 +79,10 @@ internal static class GuardianInstallReference
         }
         catch { return false; }
     }
+
+    internal static bool IsSupportedLauncherName(string? fileName) =>
+        string.Equals(fileName, "TraceBrake.exe", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(fileName, "Foreman.exe", StringComparison.OrdinalIgnoreCase);
 
     private static string CanonicalPath(string path) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));

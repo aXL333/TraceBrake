@@ -9,9 +9,9 @@ public enum CuModality { Browser, Desktop, Android }
 public enum CuIsolationMode { SharedMonopilot, IsolatedDesktop, IsolatedSession }
 
 /// <summary>
-/// One structured computer/browser-use action an agent asked Foreman to perform, captured BEFORE execution. This is
+/// One structured computer/browser-use action an agent asked TraceBrake to perform, captured BEFORE execution. This is
 /// what the auditor judges and the broker logs. Judging structured intent (verb + args) rather than raw pixels is
-/// what makes Foreman-mediated CU auditable and cheap. <see cref="Args"/> carries verb-specific fields, e.g.
+/// what makes TraceBrake-mediated CU auditable and cheap. <see cref="Args"/> carries verb-specific fields, e.g.
 /// "url", "text", "selector", "fieldType", "key".
 /// </summary>
 public sealed record CuAction(
@@ -21,7 +21,10 @@ public sealed record CuAction(
     string? ByHarness = null,
     string? ActionId = null,
     string? SessionId = null,
-    CuIsolationMode Isolation = CuIsolationMode.SharedMonopilot)
+    CuIsolationMode Isolation = CuIsolationMode.SharedMonopilot,
+    // Trusted broker adapters may force a held decision for an inherited/legacy AskFirst policy. Untrusted MCP JSON
+    // cannot set this field; direct callers can only make an action stricter, never bypass approval.
+    bool RequiresOperatorApproval = false)
 {
     /// <summary>Arg value or empty string (never null) for projection/heuristics.</summary>
     public string Arg(string key) => Args.TryGetValue(key, out var v) ? v ?? string.Empty : string.Empty;
@@ -83,12 +86,12 @@ public static class CuVerbs
     }
 
     // Deliberately bounded ADB surface. There is no raw shell/exec verb: every Android operation is rebuilt by
-    // Foreman from typed arguments before it reaches adb. Observe-only inventory/capture is the safe fast path;
-    // tap/type/swipe/key are state-changing and the broker holds them for explicit operator approval.
+    // TraceBrake from typed arguments before it reaches adb. Observe-only inventory/capture is the safe fast path;
+    // install/tap/type/swipe/key are state-changing and the broker holds them for explicit operator approval.
     private static readonly HashSet<string> AndroidVerbs = new(StringComparer.OrdinalIgnoreCase)
     {
         "devices", "screenshot", "ui_dump", "logcat",
-        "tap", "type", "swipe", "key",
+        "install", "tap", "type", "swipe", "key",
     };
 
     public static bool IsKnownAndroid(string? verb)

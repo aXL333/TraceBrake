@@ -6,7 +6,7 @@ using ModelContextProtocol.Protocol;
 namespace Foreman.TestHarness;
 
 /// <summary>
-/// A standalone MCP client that impersonates a harness and drives Foreman's Ask Harness loop end to end,
+/// A standalone MCP client that impersonates a harness and drives TraceBrake's Ask Harness loop end to end,
 /// so you can exercise the round-trip without a real Claude/Codex/Cursor session attached.
 ///
 /// Each tick it prints a SITREP (foreman_status + this harness's behaviour metrics) and, unless --no-ack is
@@ -85,9 +85,9 @@ internal static class Program
         catch (OperationCanceledException) { return 0; }
         catch (Exception ex)
         {
-            Log("ERR", $"Couldn't connect to Foreman at {url}.");
+            Log("ERR", $"Couldn't connect to TraceBrake at {url}.");
             Log("ERR", $"  {ex.Message}");
-            Log("ERR", "  Is the Foreman tray app running? Is the port right? Is the token valid?");
+            Log("ERR", "  Is the TraceBrake tray app running? Is the port right? Is the token valid?");
             return 1;
         }
 
@@ -96,11 +96,11 @@ internal static class Program
             int toolCount;
             try { toolCount = (await client.ListToolsAsync(options: null, cancellationToken: ct)).Count; }
             catch { toolCount = -1; }
-            Log("OK", $"Connected as \"{name}\" — {(toolCount < 0 ? "tools unavailable" : $"{toolCount} Foreman tools visible")}.");
+            Log("OK", $"Connected as \"{name}\" — {(toolCount < 0 ? "tools unavailable" : $"{toolCount} TraceBrake tools visible")}.");
 
             // Announce a task boundary so this shows up as an active harness in Foreman.
             await Call(client, "report_task_start",
-                new() { ["taskDescription"] = "Foreman MCP test harness online (ack/sitrep loop)" }, ct);
+                new() { ["taskDescription"] = "TraceBrake MCP test harness online (ack/sitrep loop)" }, ct);
 
             int tick = 0;
             while (!ct.IsCancellationRequested)
@@ -121,7 +121,7 @@ internal static class Program
 
     /// <summary>
     /// Cheap inbox probe for schedulers / loop watchers. One MCP round-trip, no logging spam.
-    /// Exit 0 = idle, 1 = pending Ask Harness mail, 2 = Foreman unreachable.
+    /// Exit 0 = idle, 1 = pending Ask Harness mail, 2 = TraceBrake unreachable.
     /// </summary>
     private static async Task<int> ProbeAsync(string harness, int port, int limit, string explicitToken, CancellationToken ct)
     {
@@ -202,7 +202,7 @@ internal static class Program
         // driver picker). The operator token is peer-bound to its first user and gets 401'd from a separate
         // process, so a per-harness token is what a driver must present from here.
         var harness = Arg(args, "harness", "claude-code").Trim().ToLowerInvariant();
-        // An explicit --token wins (e.g. a token Foreman minted for this harness via Connect Agent, which the
+        // An explicit --token wins (e.g. a token TraceBrake minted for this harness via Connect Agent, which the
         // running instance honors even when its live secret has diverged from the on-disk mcp.token). Otherwise
         // mint a per-harness token from the install secret on disk.
         var explicitToken = Arg(args, "token", "").Trim();
@@ -218,7 +218,7 @@ internal static class Program
 
         McpClient client;
         try { client = await McpClient.CreateAsync(transport, new McpClientOptions { ClientInfo = new Implementation { Name = harness, Version = "test", Title = $"CU driver ({harness})" } }, null, ct); }
-        catch (Exception ex) { Log("ERR", $"Couldn't connect to Foreman at {url}: {ex.Message}"); return 1; }
+        catch (Exception ex) { Log("ERR", $"Couldn't connect to TraceBrake at {url}: {ex.Message}"); return 1; }
 
         await using (client)
         {
@@ -307,7 +307,7 @@ internal static class Program
             var reply = await Call(client, "reply_to_ask_harness_request", new()
             {
                 ["requestId"]   = id,
-                ["response"]    = "ACK from the Foreman test harness: this event was generated/observed during " +
+                ["response"]    = "ACK from the TraceBrake test harness: this event was generated/observed during " +
                                   "loop testing of the Ask Harness round-trip. No corrective action required.",
                 ["actionTaken"] = "acknowledged by test harness (loop)",
                 ["harnessId"]   = harness,
@@ -369,7 +369,7 @@ internal static class Program
     private static void Banner(string harness, string name, string url, string scope, string token,
                                int interval, bool ack, bool once)
     {
-        Console.WriteLine("Foreman test harness — MCP ack/sitrep loop");
+        Console.WriteLine("TraceBrake test harness — MCP ack/sitrep loop");
         Console.WriteLine($"  harness  : {harness}  (announces as \"{name}\")");
         Console.WriteLine($"  endpoint : {url}");
         Console.WriteLine($"  token    : {Mask(token)}  [{scope}]");
@@ -380,16 +380,16 @@ internal static class Program
     private static void PrintUsage()
     {
         Console.WriteLine("""
-        Foreman test harness — drives Foreman's MCP Ask Harness loop (ack/sitrep).
+        TraceBrake test harness — drives TraceBrake's MCP Ask Harness loop (ack/sitrep).
 
         Usage: foreman-harness [options]
 
           --harness <id>     Harness identity to impersonate (default: claude-code).
                              e.g. codex, cursor, opencode, or any custom id.
-          --port <n>         Foreman MCP port (default: 54321).
+          --port <n>         TraceBrake MCP port (default: 54321).
           --token <tok>      Use this bearer token verbatim instead of minting one.
                              (Default: mint a scoped per-harness token from mcp.token.)
-          --name <text>      Client name announced to Foreman (default: derived from --harness).
+          --name <text>      Client name announced to TraceBrake (default: derived from --harness).
           --interval <secs>  Seconds between ticks (default: 15, min 2).
           --limit <n>        Max Ask Harness requests to pull per tick (default: 10).
           --once             Run a single SITREP + ACK pass and exit.

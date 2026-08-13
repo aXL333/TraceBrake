@@ -132,7 +132,7 @@ internal static class WebAuthnInterop
             var pType = Str(keep, PUBLIC_KEY);
             var rp = new RpInfo { dwVersion = 1, pwszId = Str(keep, rpId), pwszName = Str(keep, rpName) };
             var uid = RandomNumberGenerator.GetBytes(16);
-            var pUserName = Str(keep, "Foreman operator");
+            var pUserName = Str(keep, "TraceBrake operator");
             var user = new UserInfo { dwVersion = 1, cbId = uid.Length, pbId = Bytes(keep, uid), pwszName = pUserName, pwszDisplayName = pUserName };
 
             var cose = new[]

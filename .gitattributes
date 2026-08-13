@@ -6,6 +6,9 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
+# Unix shell scripts must retain LF so their shebang works on Linux.
+*.sh text eol=lf
+
 # Treat known binary assets as binary.
 *.ico binary
 *.png binary

@@ -9,8 +9,7 @@ namespace Foreman.App;
 public static class FirstRunDetector
 {
     private static readonly string _flagPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Foreman", "first-run-complete.flag");
+        Foreman.Core.ProductIdentity.LocalDataRoot, "first-run-complete.flag");
 
     public static void RunIfNeeded(int mcpPort, string mcpToken, Action openConnectGuide)
     {
@@ -21,16 +20,16 @@ public static class FirstRunDetector
 
         var choice = MessageBox.Show(
             $"""
-            Welcome to Foreman Agent Safety - a local safety monitor for AI coding agents.
+            Welcome to TraceBrake - a local safety monitor for AI coding agents.
 
-            Foreman Agent Safety's MCP server is running on port {mcpPort}.
+            TraceBrake's MCP server is running on port {mcpPort}.
 
             Open the Connect Agent guide now?
 
             It can configure Claude Code and Codex automatically, and it shows
             copy-paste settings for other MCP-capable agents.
             """,
-            "Foreman Agent Safety - First Run", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "TraceBrake - First Run", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         if (choice == MessageBoxResult.Yes)
         {
@@ -40,14 +39,14 @@ public static class FirstRunDetector
 
         MessageBox.Show(
             $"""
-            You can connect an agent later from the Foreman Agent Safety tray menu or dashboard.
+            You can connect an agent later from the TraceBrake tray menu or dashboard.
 
             MCP URL:
               http://localhost:{mcpPort}/mcp
 
             The /mcp endpoint needs the bearer token in:
-              %LocalAppData%\Foreman\mcp.token
+              %LocalAppData%\TraceBrake\mcp.token
             """,
-            "Foreman Agent Safety - Connect Agent", MessageBoxButton.OK, MessageBoxImage.Information);
+            "TraceBrake - Connect Agent", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 }

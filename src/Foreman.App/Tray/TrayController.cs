@@ -120,7 +120,7 @@ public sealed class TrayController : IEventSink, IDisposable
     public Action<string>?                                    RejectDeposit          { get; set; }
     public Action?                                            ClearDepositQueue      { get; set; }
 
-    /// <summary>Injected from App — current Foreman browser-use attention tab, if the browser extension pinned one.</summary>
+    /// <summary>Injected from App — current TraceBrake browser-use attention tab, if the browser extension pinned one.</summary>
     public Func<string?>?                                      GetCuAttentionTab    { get; set; }
 
     /// <summary>Injected from App — the MCP bearer token, for building Claude Code connect config/commands.</summary>
@@ -159,7 +159,7 @@ public sealed class TrayController : IEventSink, IDisposable
         _tray = new TaskbarIcon
         {
             Icon = TrayIconSet.Green,
-            ToolTipText = "Foreman Agent Safety — All clear",
+            ToolTipText = "TraceBrake — All clear",
             ContextMenu = BuildMenu(),
         };
 
@@ -249,7 +249,7 @@ public sealed class TrayController : IEventSink, IDisposable
                     _lastBalloonEvent = null;   // clicking the digest opens the log
                     var crit = _gmSuppressedCritical > 0 ? $", {_gmSuppressedCritical} critical" : "";
                     TryShowNotification("game mode digest",
-                        "Foreman Agent Safety - game mode ended",
+                        "TraceBrake - game mode ended",
                         $"Held {_gmSuppressedTotal} on-screen alert(s){crit} while you were in a game. Click to review the log.",
                         _gmSuppressedCritical > 0 ? H.NotifyIcon.Core.NotificationIcon.Error : H.NotifyIcon.Core.NotificationIcon.Warning);
                     _gmSuppressedTotal = 0;
@@ -372,9 +372,9 @@ public sealed class TrayController : IEventSink, IDisposable
         {
             var (title, icon) = esc.NewLevel switch
             {
-                EscalationLevel.Emergency => ("Foreman Agent Safety — EMERGENCY", H.NotifyIcon.Core.NotificationIcon.Error),
-                EscalationLevel.Alarm     => ("Foreman Agent Safety — ALARM",     H.NotifyIcon.Core.NotificationIcon.Error),
-                _                         => ("Foreman Agent Safety — Alert",     H.NotifyIcon.Core.NotificationIcon.Warning),
+                EscalationLevel.Emergency => ("TraceBrake — EMERGENCY", H.NotifyIcon.Core.NotificationIcon.Error),
+                EscalationLevel.Alarm     => ("TraceBrake — ALARM",     H.NotifyIcon.Core.NotificationIcon.Error),
+                _                         => ("TraceBrake — Alert",     H.NotifyIcon.Core.NotificationIcon.Warning),
             };
             _lastBalloonEvent = esc;
             TryShowNotification("escalation alert", title,
@@ -386,7 +386,7 @@ public sealed class TrayController : IEventSink, IDisposable
         if (evt.Severity >= ForemanSeverity.High)
         {
             _lastBalloonEvent = evt;
-            TryShowNotification("critical alert", "Foreman Agent Safety - Critical Alert",
+            TryShowNotification("critical alert", "TraceBrake - Critical Alert",
                 evt.Message + "\n(Click for details)",
                 H.NotifyIcon.Core.NotificationIcon.Error);
         }
@@ -395,7 +395,7 @@ public sealed class TrayController : IEventSink, IDisposable
             // Operator muted the yellow warning toasts (dashboard "Mute warnings"): skip the popup only — the
             // event is still logged, counted, shown in the dashboard, and escalated. Notification spam off.
             _lastBalloonEvent = evt;
-            TryShowNotification("warning alert", "Foreman Agent Safety - Warning",
+            TryShowNotification("warning alert", "TraceBrake - Warning",
                 evt.Message + "\n(Click for details)",
                 H.NotifyIcon.Core.NotificationIcon.Warning);
         }
@@ -450,7 +450,7 @@ public sealed class TrayController : IEventSink, IDisposable
             ? $" - {_highestEscalation.ToString().ToUpperInvariant()}"
             : "";
         var gameStr = GameModeActive && _settings.GameMode.Enabled ? " - game mode (popups paused)" : "";
-        return $"Foreman Agent Safety - {(_activeAlerts > 0 ? $"{_activeAlerts} alert(s){escalationStr}" : "All clear")}{gameStr}";
+        return $"TraceBrake - {(_activeAlerts > 0 ? $"{_activeAlerts} alert(s){escalationStr}" : "All clear")}{gameStr}";
     }
 
     private void TrySetIcon(TrayStatus status)
@@ -546,7 +546,12 @@ public sealed class TrayController : IEventSink, IDisposable
             w.OpenConnectAgentRequested = () => w.ShowTab(DashboardWindow.DashboardTab.Connect);
             // Mute/unmute yellow (medium) warning toasts so they don't spam — notifications only; alerts still
             // log, count, and show in the dashboard. Persisted so it survives restarts.
-            w.SetWarningsMuted = muted => { _settings.NotifyOnWarning = !muted; SettingsStore.Save(_settings); };
+            w.SetWarningsMuted = muted =>
+            {
+                using var provenance = Foreman.App.Security.SettingsChangeUiScope.Begin("toggle-warning-notifications");
+                _settings.NotifyOnWarning = !muted;
+                SettingsStore.Save(_settings);
+            };
             w.GetMcpClientCount = GetMcpClientCount;
             w.GetNetCaptureConnected = GetNetCaptureActive;
             w.GetConnectedClients = GetConnectedClients;
@@ -618,6 +623,9 @@ public sealed class TrayController : IEventSink, IDisposable
     /// <summary>Open the dashboard on the "Connect" tab — the connect-agent guide (used by the first-run prompt).</summary>
     public void OpenConnectAgent() => ShowDashboardTab(DashboardWindow.DashboardTab.Connect);
 
+    /// <summary>Open and foreground the dashboard. Used by explicit launch shortcuts and visual smoke tests.</summary>
+    public void OpenDashboard() => OpenDashboardWindow();
+
     // The former standalone windows are now dashboard tabs; these keep all existing callers working.
     private void OpenLogWindow()             => ShowDashboardTab(DashboardWindow.DashboardTab.Log);
     private void OpenProcessMonitorWindow()  => ShowDashboardTab(DashboardWindow.DashboardTab.Processes);
@@ -660,7 +668,7 @@ public sealed class TrayController : IEventSink, IDisposable
 
         var levelStr = _highestEscalation > EscalationLevel.Watch
             ? $"  [{_highestEscalation.ToString().ToUpperInvariant()}]" : "";
-        AddMenuItem(menu, $"Foreman Agent Safety v{GetVersion()}  ●  {_activeAlerts} alert(s){levelStr}", null, enabled: false);
+        AddMenuItem(menu, $"TraceBrake v{GetVersion()}  ●  {_activeAlerts} alert(s){levelStr}", null, enabled: false);
         menu.Items.Add(new Separator());
         // Computer-use panic control — kept at the very top so "give me my screen back" is one click away. STOP is
         // unguarded (safe direction); RESUME is presence-gated inside PanicController.
@@ -720,7 +728,7 @@ public sealed class TrayController : IEventSink, IDisposable
     private async void ExitForeman()
     {
         if (await Foreman.App.Security.PresenceGuard.AuthorizeAsync(
-                Foreman.Core.Security.WeakeningAction.ExitForeman, "quit Foreman"))
+                Foreman.Core.Security.WeakeningAction.ExitForeman, "quit TraceBrake"))
             Application.Current.Shutdown();
     }
 
@@ -729,17 +737,18 @@ public sealed class TrayController : IEventSink, IDisposable
     {
         if (Panic is not { } panic) return;
         var (ok, msg) = await panic.ResumeAsync();
-        MessageBox.Show(msg, "Foreman Agent Safety — Computer use", MessageBoxButton.OK,
+        MessageBox.Show(msg, "TraceBrake — Computer use", MessageBoxButton.OK,
             ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 
     // Enroll (arm) or disarm the presence lock. Disarming is itself a presence tap, so an agent can't un-gate.
     private async void TogglePresenceLock()
     {
+        using var provenance = Foreman.App.Security.SettingsChangeUiScope.Begin("change-presence-lock-tray");
         if (Foreman.App.Security.PresenceGuard.IsEnabled)
         {
             var (ok, msg) = await Foreman.App.Security.PresenceGuard.DisableAsync();
-            MessageBox.Show(msg, "Foreman Agent Safety — Presence lock", MessageBoxButton.OK,
+            MessageBox.Show(msg, "TraceBrake — Presence lock", MessageBoxButton.OK,
                 ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
             return;
         }
@@ -749,24 +758,24 @@ public sealed class TrayController : IEventSink, IDisposable
             MessageBox.Show(
                 "No authenticator available. Set up Windows Hello (a PIN or biometric in Windows Settings → " +
                 "Accounts → Sign-in options) or attach a FIDO2 security key, then try again.",
-                "Foreman Agent Safety — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         var choice = MessageBox.Show(
-            "Require a Windows Hello or security-key tap to WEAKEN Foreman — lower a harness's Trust, disable " +
+            "Require a Windows Hello or security-key tap to WEAKEN TraceBrake — lower a harness's Trust, disable " +
             "read-auditing, disable the persistent log, or disable a harness?\n\n" +
-            "YES = Strict (also requires a tap to QUIT Foreman — most secure, but can be annoying)\n" +
+            "YES = Strict (also requires a tap to QUIT TraceBrake — most secure, but can be annoying)\n" +
             "NO = Standard (recommended)\n" +
             "Cancel = don't enable",
-            "Foreman Agent Safety — Enable presence lock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            "TraceBrake — Enable presence lock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         if (choice == MessageBoxResult.Cancel) return;
 
         var scope = choice == MessageBoxResult.Yes
             ? Foreman.Core.Security.LockScope.Strict
             : Foreman.Core.Security.LockScope.Standard;
         var (ok2, msg2) = await Foreman.App.Security.PresenceGuard.EnableAsync(scope);
-        MessageBox.Show(msg2, "Foreman Agent Safety — Presence lock", MessageBoxButton.OK,
+        MessageBox.Show(msg2, "TraceBrake — Presence lock", MessageBoxButton.OK,
             ok2 ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 
@@ -797,7 +806,7 @@ public sealed class TrayController : IEventSink, IDisposable
         if (PrepSessionsForUpdate is null)
         {
             MessageBox.Show("Session prep isn't wired up yet.",
-                "Foreman Agent Safety — Prep for update", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Prep for update", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -808,14 +817,14 @@ public sealed class TrayController : IEventSink, IDisposable
             "a hard kill of that session's process tree. Any UNSAVED work in them is lost. A session you are present at " +
             "but have not run anything in for that long counts as idle — save it first.\n\n" +
             "Each session is handled on its own, so an active session is spared even if another of the same type is idle. " +
-            "Local-model hosts, disabled harnesses, and Foreman's own processes are left alone.\n\n" +
+            "Local-model hosts, disabled harnesses, and TraceBrake's own processes are left alone.\n\n" +
             "Note: reaped exits still appear in the event log (alert-suppression for them isn't wired yet).",
-            "Foreman Agent Safety — Prep sessions for update",
+            "TraceBrake — Prep sessions for update",
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.OK) return;
 
         var (ok, msg) = PrepSessionsForUpdate();
-        MessageBox.Show(msg, "Foreman Agent Safety — Prep sessions for update",
+        MessageBox.Show(msg, "TraceBrake — Prep sessions for update",
             MessageBoxButton.OK, ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 

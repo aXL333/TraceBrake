@@ -34,7 +34,7 @@ public sealed class SseSessionManager
     // Sticky activity, keyed by harness id (from the authenticated token). These clients use short-lived
     // per-request MCP sessions, so the live _sessions set reads ~0 between calls — the dashboard would flicker
     // "No MCP"/"restart to link" even for a connected, working agent. MarkSeen records each authenticated
-    // request so the UI can treat a harness that has talked to Foreman within a TTL as connected.
+    // request so the UI can treat a harness that has talked to TraceBrake within a TTL as connected.
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recent = new(StringComparer.OrdinalIgnoreCase);
 
     public int Count { get { Prune(); return _sessions.Count; } }
@@ -115,7 +115,7 @@ public sealed class SseSessionManager
     ///   1. <b>Sampling round-trip</b> — if a matching session advertises the sampling capability,
     ///      ask its model and return the reply (a true poll).
     ///   2. <b>Targeted notification</b> — else push the prompt into matching session(s) fire-and-forget.
-    ///   3. <b>NoSession</b> — the offender isn't connected to Foreman's MCP; caller falls back to clipboard.
+    ///   3. <b>NoSession</b> — the offender isn't connected to TraceBrake's MCP; caller falls back to clipboard.
     /// Session→harness matching is by the client's self-announced name (advisory only, never auth).
     /// </summary>
     public async Task<AskOffenderResult> AskOffenderAsync(
@@ -167,7 +167,7 @@ public sealed class SseSessionManager
                     AskOutcome.Notified, null, ClientLabel(matches[firstSuccess].Value.Server), requestId);
         }
 
-        // 3) offender not connected to Foreman's MCP
+        // 3) offender not connected to TraceBrake's MCP
         return new AskOffenderResult(AskOutcome.NoSession, null, null, requestId);
     }
 
@@ -199,7 +199,7 @@ public sealed class SseSessionManager
     }
 
     /// <summary>
-    /// Best-effort match of an MCP client's self-announced name/title to a Foreman harness id
+    /// Best-effort match of an MCP client's self-announced name/title to a TraceBrake harness id
     /// (e.g. "Claude Code" ⇄ "claude-code"). Self-declared and not authoritative — multiple
     /// instances of one harness are indistinguishable — so it's used only for advisory delivery,
     /// never for authorization.

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Foreman LiveWeave — Pair</title>
+  <title>TraceBrake LiveWeave — Pair</title>
   <style>
     body { font-family: "Segoe UI", system-ui, sans-serif; background: #0d0f12; color: #e6e8ec; margin: 0; padding: 22px; }
     h1 { font-size: 18px; margin: 0 0 4px; }
@@ -20,8 +20,8 @@
   </style>
 </head>
 <body>
-  <h1>🔒 Pair Foreman LiveWeave</h1>
-  <p>In Foreman (the desktop app), open <b>Pair browser extension</b> — it shows a short code. Type it below.
+  <h1>🔒 Pair TraceBrake LiveWeave</h1>
+  <p>In TraceBrake (the desktop app), open <b>Pair browser extension</b> — it shows a short code. Type it below.
      The code never leaves your machine; this extension proves it over a loopback challenge/response and pairs as
      the <code>liveweave</code> harness.</p>
   <div class="driver">
@@ -46,11 +46,11 @@
   </div>
   <div id="msg" role="status" aria-live="polite"></div>
   <div id="pairedBlock" style="display:none; margin-top:16px; padding-top:14px; border-top:1px solid #2a2f37">
-    <p style="margin:0 0 8px">✅ Currently paired with Foreman as <code>liveweave</code>.</p>
+    <p style="margin:0 0 8px">✅ Currently paired with TraceBrake as <code>liveweave</code>.</p>
     <button id="unpair" class="secondary" style="margin-top:0">Unpair / forget token</button>
   </div>
   <button id="close" class="secondary">Close</button>
-  <p style="margin-top:18px">Foreman must be running locally (default <code>http://127.0.0.1:54321</code>). Everything stays on this device.</p>
+  <p style="margin-top:18px">TraceBrake must be running locally (default <code>http://127.0.0.1:54321</code>). Everything stays on this device.</p>
   <script src="options.js"></script>
 </body>
 </html>

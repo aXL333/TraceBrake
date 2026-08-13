@@ -81,15 +81,23 @@ internal sealed class GuardianSettingsSealer : ISettingsSealer
                     : SettingsSealVerdict.Unsealed;
                 if (verdict != SettingsSealVerdict.Tampered) return verdict;
 
-                // g1 predates projection versioning. Verify once against the retained predecessor, then let the
-                // store reseal the unchanged settings under the current projection.
-                var legacy = _client.VerifySettingsAsync(
-                    SettingsSeal.LegacySecurityProjectionV1(settings), storedSeal, cts.Token).GetAwaiter().GetResult();
-                return legacy is not null &&
-                       Enum.TryParse<SettingsSealVerdict>(legacy.Verdict, out var legacyVerdict) &&
-                       legacyVerdict == SettingsSealVerdict.Sealed
-                    ? SettingsSealVerdict.LegacySealed
-                    : SettingsSealVerdict.Tampered;
+                // g1 predates projection versioning. Try each retained predecessor newest-first, then let the store
+                // reseal unchanged settings under the current projection. This prevents a capability-profile schema
+                // upgrade from looking like tampering on machines that already use the SYSTEM guardian.
+                foreach (var projection in new[]
+                         {
+                             SettingsSeal.LegacySecurityProjectionV2(settings),
+                             SettingsSeal.LegacySecurityProjectionV1(settings),
+                         })
+                {
+                    var legacy = _client.VerifySettingsAsync(
+                        projection, storedSeal, cts.Token).GetAwaiter().GetResult();
+                    if (legacy is not null
+                        && Enum.TryParse<SettingsSealVerdict>(legacy.Verdict, out var legacyVerdict)
+                        && legacyVerdict == SettingsSealVerdict.Sealed)
+                        return SettingsSealVerdict.LegacySealed;
+                }
+                return SettingsSealVerdict.Tampered;
             }
             catch
             {

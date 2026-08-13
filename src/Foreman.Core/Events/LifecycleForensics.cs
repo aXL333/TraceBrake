@@ -2,7 +2,7 @@ using Foreman.Core.Notifications;
 
 namespace Foreman.Core.Events;
 
-/// <summary>How the PRIOR Foreman instance ended, reconstructed from the OS event log on the next launch.</summary>
+/// <summary>How the PRIOR TraceBrake instance ended, reconstructed from the OS event log on the next launch.</summary>
 public enum PriorShutdown
 {
     /// <summary>No prior run-marker found (first run, or the OS event log is unavailable).</summary>
@@ -21,7 +21,7 @@ public enum PriorShutdown
 }
 
 /// <summary>
-/// Reconstructs how the previous Foreman instance terminated by reading the lifecycle run-markers it left in the
+/// Reconstructs how the previous TraceBrake instance terminated by reading the lifecycle run-markers it left in the
 /// OS event log. Pure over the records the platform sink hands back, so it's fully testable without an OS log.
 /// </summary>
 public static class LifecycleForensics

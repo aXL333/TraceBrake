@@ -275,10 +275,10 @@ public partial class VaultView : UserControl
     {
         if ((sender as FrameworkElement)?.Tag is not VaultItemRow row) return;
         if (MessageBox.Show($"Delete the credential \"{row.Name}\"? This can't be undone.",
-                "Foreman Agent Safety — Vault", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                "TraceBrake — Vault", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
         try { _vault.Delete(row.Name); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Foreman Agent Safety — Vault", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "TraceBrake — Vault", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         Log($"Vault item '{row.Name}' deleted.");
         if (string.Equals(_editingOriginalName, row.Name, StringComparison.OrdinalIgnoreCase))
         {

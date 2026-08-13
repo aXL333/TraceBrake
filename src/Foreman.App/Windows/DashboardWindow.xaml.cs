@@ -192,6 +192,7 @@ public partial class DashboardWindow : Window, IEventSink
 
     private async void PadlockClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = Security.SettingsChangeUiScope.Begin("change-presence-lock-dashboard");
         _padlockBusy = true;
         try
         {
@@ -199,24 +200,24 @@ public partial class DashboardWindow : Window, IEventSink
             {
                 var (ok, msg) = await Security.PresenceGuard.DisableAsync();
                 if (ok) SetPadlockVisual(false, animate: true);
-                else MessageBox.Show(msg, "Foreman Agent Safety — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
+                else MessageBox.Show(msg, "TraceBrake — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             if (!Security.PresenceGuard.IsAvailable)
             {
                 MessageBox.Show("No authenticator available. Set up Windows Hello (a PIN or biometric) or attach a FIDO2 security key, then try again.",
-                    "Foreman Agent Safety — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "TraceBrake — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
             var choice = MessageBox.Show(
-                "Require a Windows Hello or security-key tap to WEAKEN Foreman?\n\n" +
-                "YES = Strict (also requires a tap to QUIT Foreman)\nNO = Standard (recommended)\nCancel = don't enable",
-                "Foreman Agent Safety — Enable presence lock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                "Require a Windows Hello or security-key tap to WEAKEN TraceBrake?\n\n" +
+                "YES = Strict (also requires a tap to QUIT TraceBrake)\nNO = Standard (recommended)\nCancel = don't enable",
+                "TraceBrake — Enable presence lock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (choice == MessageBoxResult.Cancel) return;
             var scope = choice == MessageBoxResult.Yes ? Foreman.Core.Security.LockScope.Strict : Foreman.Core.Security.LockScope.Standard;
             var (ok2, msg2) = await Security.PresenceGuard.EnableAsync(scope);
             if (ok2) SetPadlockVisual(true, animate: true);
-            else MessageBox.Show(msg2, "Foreman Agent Safety — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else MessageBox.Show(msg2, "TraceBrake — Presence lock", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally { _padlockBusy = false; }
     }
@@ -289,7 +290,7 @@ public partial class DashboardWindow : Window, IEventSink
             capByHarness.TryGetValue(id, out var c) ? c : (Array.Empty<string>(), Array.Empty<string>());
         static string HarnessName(string id) => KnownHarnesses.GetById(id)?.DisplayName ?? id;
 
-        // Whether each harness is wired to Foreman — read from a background-refreshed cache (config-file reads,
+        // Whether each harness is wired to TraceBrake — read from a background-refreshed cache (config-file reads,
         // esp. a multi-MB ~/.claude.json, must not run on the UI thread). Keeps configured agents visible when idle.
         EnsureConfiguredCacheFresh();
         var cfgSnapshot = _configuredCache;   // snapshot the reference; the bg task swaps the whole dict atomically
@@ -401,14 +402,14 @@ public partial class DashboardWindow : Window, IEventSink
 
         // Per-session capability breakdown on the MCP CLIENTS card (hover).
         McpClientsCard.ToolTip = connectedClients.Count == 0
-            ? "No agents connected to Foreman Agent Safety's MCP.\nClick to open the Connect agent guide."
+            ? "No agents connected to TraceBrake's MCP.\nClick to open the Connect agent guide."
             : "Connected agents:\n" + string.Join("\n", connectedClients.Select(c =>
                 $"  • {c.Name}{(string.IsNullOrWhiteSpace(c.Version) ? "" : $" v{c.Version}")} — " +
                 $"sampling: {(c.Sampling ? "yes (Ask Harness gets a reply)" : "no (Ask Harness notifies one-way)")}"))
               + "\n\nClick to open the Connect agent guide.";
 
         // ── Footer ────────────────────────────────────────────────────────────
-        var meta = $"Foreman Agent Safety v{Version}  ·  up {Uptime()}  ·  MCP :{McpPort}";
+        var meta = $"TraceBrake v{Version}  ·  up {Uptime()}  ·  MCP :{McpPort}";
         FooterText.Text = relevant.Count == 0
             ? meta
             : $"{meta}  ·  {relevant.Count} recent event{(relevant.Count == 1 ? "" : "s")}  ·  click any row for detail";
@@ -721,7 +722,7 @@ public partial class DashboardWindow : Window, IEventSink
                 "MCP clients",
                 connectedCount > 0 ? MetaLightState.Ok : MetaLightState.Off,
                 connectedCount > 0
-                    ? $"{connectedCount} agent(s) connected to Foreman's MCP (active within the last few minutes)."
+                    ? $"{connectedCount} agent(s) connected to TraceBrake's MCP (active within the last few minutes)."
                       + (clients.Count > 0
                             ? "\nLive now: " + string.Join(", ", clients.Select(c => c.Name))
                             : "")
@@ -772,7 +773,7 @@ public partial class DashboardWindow : Window, IEventSink
     private static bool IsMcpConnected(IReadOnlyList<McpClientInfo> clients, string harnessId) =>
         clients.Any(c => SseSessionManager.MatchesHarness(c.Name, null, harnessId));
 
-    // Whether this harness's config already points at Foreman's MCP endpoint (so a "No MCP" running agent just
+    // Whether this harness's config already points at TraceBrake's MCP endpoint (so a "No MCP" running agent just
     // needs restarting to link, vs. one that was never connected). Cheap config-file read; callers gate it to
     // running, not-yet-connected harnesses so it runs for only a handful per refresh.
     private bool IsHarnessConfigured(string harnessId)
@@ -946,7 +947,7 @@ public partial class DashboardWindow : Window, IEventSink
     private static MessageBoxResult PromptSaveHarnesses(string action) =>
         MessageBox.Show(
             $"You have unsaved changes on the Harnesses tab.\n\nSave them before {action}?",
-            "Foreman Agent Safety — Unsaved changes", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            "TraceBrake — Unsaved changes", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
 
     private static string Version =>
         System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1";
@@ -1262,7 +1263,7 @@ public sealed class HarnessChipVm
         $"{name}\n{(running ? "Running" : "Not running")} · Trust {trust} · {level}\n" +
         $"{alerts} alert{(alerts == 1 ? "" : "s")}" +
         (mcp ? " · MCP connected"
-             : (running && configured) ? " · MCP configured — links automatically the next time it calls a Foreman tool (no restart needed)"
+             : (running && configured) ? " · MCP configured — links automatically the next time it calls a TraceBrake tool (no restart needed)"
              : configured ? " · MCP configured (idle — start it to connect)"
              : " · MCP not connected") +
         "\nClick for live detail.";
@@ -1360,9 +1361,9 @@ public sealed class DashboardHarnessCardVm
         }
         else if (isRunning && configured)
         {
-            // Foreman is in this agent's config with a valid token; the agent just hasn't called a Foreman tool
+            // TraceBrake is in this agent's config with a valid token; the agent just hasn't called a TraceBrake tool
             // yet. MCP clients connect lazily (on first tool use), so it links automatically when it next does —
-            // restarting does NOT help. (amber = the ball is in the agent's court, not Foreman's.)
+            // restarting does NOT help. (amber = the ball is in the agent's court, not TraceBrake's.)
             detail = $"Configured · Ready · {pa}";
             detailFg = new SolidColorBrush(Color.FromRgb(0xE8, 0xB2, 0x3C));
         }
@@ -1376,7 +1377,7 @@ public sealed class DashboardHarnessCardVm
         }
         else if (configured)
         {
-            // Wired to Foreman but idle — shown so you can see it's set up; it links when you next start it.
+            // Wired to TraceBrake but idle — shown so you can see it's set up; it links when you next start it.
             detail = "Configured · idle — start it to connect";
         }
         else

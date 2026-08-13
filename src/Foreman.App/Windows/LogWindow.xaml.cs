@@ -224,7 +224,7 @@ public partial class LogWindow : UserControl, IEventSink, IDisposable
     {
         var dlg = new SaveFileDialog
         {
-            Title      = "Export Foreman Agent Safety Event Log",
+            Title      = "Export TraceBrake Event Log",
             Filter     = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
             FileName   = $"foreman-log-{DateTime.Now:yyyy-MM-dd-HHmm}.csv",
             DefaultExt = ".csv",
@@ -250,7 +250,7 @@ public partial class LogWindow : UserControl, IEventSink, IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Export failed: {ex.Message}", "Foreman Agent Safety",
+            MessageBox.Show($"Export failed: {ex.Message}", "TraceBrake",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -283,7 +283,7 @@ public partial class LogWindow : UserControl, IEventSink, IDisposable
         if (RotateAndReseal is null)
         {
             MessageBox.Show("Persistent logging is off — there is no on-disk chain to rotate.",
-                "Foreman Agent Safety", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -294,7 +294,7 @@ public partial class LogWindow : UserControl, IEventSink, IDisposable
             "routine maintenance.\n\n" +
             "This is a security-weakening action: if the presence lock is armed it will require Windows Hello, and the " +
             "rotation is recorded in the new chain and the OS event log.",
-            "Foreman Agent Safety — rotate event log",
+            "TraceBrake — rotate event log",
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.OK) return;
 
@@ -302,7 +302,7 @@ public partial class LogWindow : UserControl, IEventSink, IDisposable
         try { result = await RotateAndReseal.Invoke(); }
         catch (Exception ex) { result = (false, $"Rotate failed: {ex.Message}"); }
 
-        MessageBox.Show(result.Message, "Foreman Agent Safety",
+        MessageBox.Show(result.Message, "TraceBrake",
             MessageBoxButton.OK, result.Ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 

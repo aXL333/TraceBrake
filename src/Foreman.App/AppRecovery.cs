@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Foreman.App;
 
 /// <summary>
-/// Watchdog-of-the-watchdog (B9 clever improvement #1): asks Windows to RESTART Foreman if it terminates
+/// Watchdog-of-the-watchdog (B9 clever improvement #1): asks Windows to RESTART TraceBrake if it terminates
 /// abnormally, and recognises when the current launch IS such a restart.
 ///
 /// <see cref="RegisterApplicationRestart"/> is the same Windows Error Reporting mechanism Windows uses to bring
@@ -25,7 +25,7 @@ internal static class AppRecovery
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern int RegisterApplicationRestart(string? pwzCommandline, int dwFlags);
 
-    /// <summary>Registers Foreman for OS-driven restart on abnormal termination. Best-effort; never throws.</summary>
+    /// <summary>Registers TraceBrake for OS-driven restart on abnormal termination. Best-effort; never throws.</summary>
     public static void RegisterForRestart()
     {
         try { RegisterApplicationRestart(RestartSentinel, RestartFlags); }
