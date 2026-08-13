@@ -257,12 +257,12 @@ public sealed class ElevatedSidecarController : IDisposable
             EventBus.Instance.Publish(new MonitoringNoticeEvent(
                 DateTimeOffset.UtcNow, ForemanSeverity.High, "Foreman.Sidecar",
                 "Refused to launch the elevated sidecar because its complete payload could not be held and verified " +
-                "unchanged. Reinstall Foreman or restart after any development build finishes."));
+                "unchanged. Reinstall TraceBrake or restart after any development build finishes."));
             return false;
         }
 
         // Never launch an UNTRUSTED binary with administrator rights. The sidecar sits in a same-user-writable
-        // dir and forces requireAdministrator, so an overwritten sidecar would turn Foreman's branded UAC prompt
+        // dir and forces requireAdministrator, so an overwritten sidecar would turn TraceBrake's branded UAC prompt
         // into a privilege-escalation primitive. Require it to carry the same Authenticode signature as Foreman.
         var (trusted, reason) = SidecarIntegrity.Verify(exe);
         if (!trusted)
@@ -270,7 +270,7 @@ public sealed class ElevatedSidecarController : IDisposable
             EventBus.Instance.Publish(new MonitoringNoticeEvent(
                 DateTimeOffset.UtcNow, ForemanSeverity.High, "Foreman.Sidecar",
                 $"Refused to launch the elevated sidecar — {reason} This can mean the sidecar binary was tampered " +
-                "with to hijack Foreman's administrator prompt. Reinstall Foreman from a trusted source."));
+                "with to hijack TraceBrake's administrator prompt. Reinstall TraceBrake from a trusted source."));
             return false;
         }
 

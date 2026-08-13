@@ -17,7 +17,7 @@ namespace Foreman.App.ComputerUse;
 /// <summary>
 /// Launches and supervises the Local Agent Host PILOT shim (<c>Foreman.CuPilot.exe</c>) over HOP A - the duplex
 /// owner-only control pipe to the broker-reaching shim. This is the SAME launch-bound trust spine as
-/// <see cref="DesktopCuController"/> (the spec chose to reuse it verbatim): the shim is Foreman's OWN signed binary,
+/// <see cref="DesktopCuController"/> (the spec chose to reuse it verbatim): the shim is TraceBrake's OWN signed binary,
 /// launched by Foreman, so the connecting client must clear the integrity + identity + knowledge gates before any
 /// frame is trusted - a same-user attacker cannot be the launched, signed, PID-pinned process. L3 is relay-free /
 /// capture-free / input-free (the shim only does Hello/Heartbeat); the agent channel (HOP B) + DriverSubmit relay
@@ -53,7 +53,7 @@ public sealed class PilotChannelController : IDisposable
     /// in-process (the broker submit is wired in L5); in L4 the App just surfaces it.</summary>
     public Action<CuAction>? OnDriverSubmit { get; set; }
 
-    /// <summary>The staged pilot shim path (under the app dir, beside Foreman's own binaries).</summary>
+    /// <summary>The staged pilot shim path (under the app dir, beside TraceBrake's own binaries).</summary>
     public static string PilotPath() => Path.Combine(AppContext.BaseDirectory, "cu-pilot", "Foreman.CuPilot.exe");
 
     /// <summary>Hold a write/delete-denying handle on the staged shim for the App's whole lifetime so a same-user
@@ -292,7 +292,7 @@ public sealed class PilotChannelController : IDisposable
             { reason = "client image is not the verified pilot shim"; return false; }
 
             if (!TryGetParentPid(h, out var ppid) || ppid != Environment.ProcessId)
-            { reason = $"client parent {ppid} != Foreman {Environment.ProcessId}"; return false; }
+            { reason = $"client parent {ppid} != TraceBrake {Environment.ProcessId}"; return false; }
 
             var (trusted, why) = SidecarIntegrity.Verify(img);
             if (!trusted) { reason = $"connected image failed integrity: {why}"; return false; }

@@ -291,7 +291,7 @@ public sealed class IdleHarnessDetector : IDisposable
 
         return (true,
             $"Cleanup request {requestId} queued for '{harnessType}'. It's delivered live if the agent is " +
-            "connected to Foreman's MCP, and waits in the mailbox (list_ask_harness_requests) either way.");
+            "connected to TraceBrake's MCP, and waits in the mailbox (list_ask_harness_requests) either way.");
     }
 
     private static async Task SafePush(

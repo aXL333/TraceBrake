@@ -59,7 +59,7 @@ public static class PresenceGuard
     {
         if (_settings is null) return (false, "Presence lock not initialized.");
         var enroll = await _verifier.EnrollAsync(
-            "Enroll this device to authorize Foreman's security-weakening actions",
+            "Enroll this device to authorize TraceBrake's security-weakening actions",
             _settings.PresenceLock.RequireUserVerification).ConfigureAwait(false);
         if (!enroll.Ok) return (false, enroll.FailureReason ?? "Enrollment failed.");
 
@@ -95,7 +95,7 @@ public static class PresenceGuard
 
     private static string Describe(WeakeningAction a) => a switch
     {
-        WeakeningAction.LowerTrust           => "lower Trust",
+        WeakeningAction.LowerTrust           => "raise Trust / loosen its profile",
         WeakeningAction.MuteProtectedAlert   => "mute a protected alert",
         WeakeningAction.DisableMonitoring    => "disable harness monitoring",
         WeakeningAction.DisableReadAuditing  => "disable read-auditing",
@@ -106,7 +106,7 @@ public static class PresenceGuard
         WeakeningAction.BindCuWindow         => "bind a window for AI computer use",
         WeakeningAction.EnrollLocalAgentHost => "authorize a local AI agent to drive the desktop",
         WeakeningAction.EnrollAdbBridge      => "authorize the Android ADB bridge and enrolled devices",
-        WeakeningAction.ExitForeman          => "quit Foreman",
+        WeakeningAction.ExitForeman          => "quit TraceBrake",
         _                                    => "security change",
     };
 }

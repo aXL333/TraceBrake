@@ -1,7 +1,7 @@
 namespace Foreman.Monitor;
 
 /// <summary>
-/// The never-kill set for Foreman's termination path. EVERY kill — the operator's tray/alert action today, and
+/// The never-kill set for TraceBrake's termination path. EVERY kill — the operator's tray/alert action today, and
 /// the harness broker (own-subtree reaping) being added — funnels through here so neither a misfired alert nor
 /// a (possibly adversarial) harness can take down the watchdog itself, its hardened guardian, the elevated
 /// sidecar, core Windows, the desktop shell, or the machine's security stack.
@@ -14,11 +14,11 @@ namespace Foreman.Monitor;
 /// </summary>
 public static class KillGuard
 {
-    // Foreman's own processes. Killing any of these is self-sabotage of the watchdog (or its prevention/telemetry
+    // TraceBrake's own processes. Killing any of these is self-sabotage of the watchdog (or its prevention/telemetry
     // tiers), so it is refused regardless of who asks.
     private static readonly HashSet<string> ForemanSelf = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Foreman.exe", "Foreman.Guardian.exe", "Foreman.EtwSidecar.exe",
+        "TraceBrake.exe", "Foreman.exe", "Foreman.Guardian.exe", "Foreman.EtwSidecar.exe",
     };
 
     // Windows OS hosts + the desktop shell. Terminating any of these destabilises the whole session, never just
@@ -39,7 +39,7 @@ public static class KillGuard
     // process subtree, where AV never appears, and (b) the OS-host list above. If an explicit AV denylist is
     // ever wanted, load it from an external data file at runtime so it never lands in the binary as a literal set.
 
-    /// <summary>PIDs that must never be terminated: 0 (Idle), 4 (System), and Foreman's own PID.</summary>
+    /// <summary>PIDs that must never be terminated: 0 (Idle), 4 (System), and TraceBrake's own PID.</summary>
     public static bool IsProtectedPid(int pid) => pid <= 4 || pid == Environment.ProcessId;
 
     /// <summary>True if this process must never be terminated — by low/own PID, or by a protected process name.</summary>

@@ -63,15 +63,15 @@ public static class SetupHealth
         // 1. Launch context — if this is wrong, every other row describes the WRONG install's state.
         items.Add(s.DataDirRedirectedTo is { Length: > 0 } overlay
             ? new("Launch context", SetupHealthStatus.Attention,
-                $"Data directory is redirected to a sandbox overlay: {overlay}. This instance runs on a COPY of Foreman's real state.",
-                "Close this instance and start Foreman from the tray, Explorer, or its shortcut.")
+                $"Data directory is redirected to a sandbox overlay: {overlay}. This instance runs on a COPY of TraceBrake's real state.",
+                "Close this instance and start TraceBrake from the tray, Explorer, or its shortcut.")
             : new("Launch context", SetupHealthStatus.Ok, "Data directory resolves normally (no sandbox overlay)."));
 
         // 2. MCP server — the bridge every harness integration rides on.
         items.Add(s.McpListening
             ? new("MCP server", SetupHealthStatus.Ok, $"Listening on 127.0.0.1:{s.McpPort}.")
             : new("MCP server", SetupHealthStatus.Attention, $"Not listening on port {s.McpPort}.",
-                "Another process may hold the port — change the port in Settings or free it, then restart Foreman (the app)."));
+                "Another process may hold the port — change the port in Settings or free it, then restart TraceBrake (the app)."));
 
         // 3. Connected agents.
         items.Add(s.ConnectedMcpClients > 0
@@ -118,7 +118,7 @@ public static class SetupHealth
         else if (s.DecoysPlanted == 0)
             items.Add(new("Decoy credentials", SetupHealthStatus.Attention,
                 "Enabled but ZERO decoys are tracked — the tripwire is armed on paper only.",
-                "Re-apply the decoy plant from Settings (existing Foreman decoys on disk are adopted)."));
+                "Re-apply the decoy plant from Settings (existing TraceBrake decoys on disk are adopted)."));
         else if (s.ReadAuditingEnabled &&
                  (s.DecoyAuditExpected <= 0 || s.DecoyAuditArmed < s.DecoyAuditExpected))
             items.Add(new("Decoy credentials", SetupHealthStatus.Attention,
@@ -131,7 +131,7 @@ public static class SetupHealth
         // 7b. Read-auditing rides the elevated sidecar; enabled-but-disconnected means no SACL tripwire is live.
         // NOTE the honest limit: a connected sidecar proves the auditor is RUNNING, not that Security 4663 events
         // actually flow — Group Policy / Advanced Audit Policy can override `auditpol` so the SACL is set but no
-        // event fires. In-process Foreman can't see that; only a live read test can. So don't claim "working".
+        // event fires. In-process TraceBrake can't see that; only a live read test can. So don't claim "working".
         if (s.DecoysEnabled && s.ReadAuditingEnabled)
             items.Add(s.SidecarConnected && s.DecoyAuditExpected > 0 &&
                       s.DecoyAuditArmed == s.DecoyAuditExpected
@@ -154,13 +154,13 @@ public static class SetupHealth
                 "Optional: Settings → Enable hardened guardian (one UAC).")
             : s.GuardianTrustMode == "publisher_signed"
                 ? new("Hardened guardian", SetupHealthStatus.Ok,
-                    "SYSTEM key-holder is active and callers are authenticated to the verified Foreman publisher.")
+                    "SYSTEM key-holder is active and callers are authenticated to the verified TraceBrake publisher.")
                 : s.GuardianTrustMode == "path_hash_pinned"
                     ? new("Hardened guardian", SetupHealthStatus.Attention,
-                        "Unsigned development mode: SYSTEM key-holder callers are pinned by Foreman.exe path and SHA-256, not by publisher.",
+                        "Unsigned development mode: SYSTEM key-holder callers are pinned by TraceBrake.exe path and SHA-256, not by publisher.",
                         "This is stronger than broad local-user trust, but not a commercial hardening boundary. Re-enable after signing to upgrade automatically to publisher trust.")
                     : new("Hardened guardian", SetupHealthStatus.Attention,
-                        "The installed service is legacy, unavailable, or does not report an authenticated client policy. Foreman is ignoring it.",
+                        "The installed service is legacy, unavailable, or does not report an authenticated client policy. TraceBrake is ignoring it.",
                         "Disable and re-enable the guardian to install the current authenticated protocol."));
 
         // 9. OS event log blackbox.

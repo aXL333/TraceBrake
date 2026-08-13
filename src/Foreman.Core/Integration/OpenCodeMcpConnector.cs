@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 namespace Foreman.Core.Integration;
 
 /// <summary>
-/// One-click "connect OpenCode to Foreman Agent Safety": writes a <c>foreman</c> entry into OpenCode's
+/// One-click "connect OpenCode to TraceBrake": writes a <c>foreman</c> entry into OpenCode's
 /// global <c>opencode.json</c> under its <c>mcp</c> object as a remote (streamable-HTTP) server with an
 /// Authorization header. The whole file is parsed and rewritten via <see cref="JsonNode"/> so every other
 /// setting is preserved; the original is backed up first.

@@ -1,5 +1,9 @@
 # OpenAI Build Week 2026
 
+> **Historical name:** the submission and immutable evidence below use the project's competition-era name,
+> **Foreman Agent Safety**. The maintained product was renamed **TraceBrake** after the competition; no
+> submission-period record, tag, demo or eligibility claim has been rewritten.
+
 Foreman Agent Safety is a pre-existing open-source project. This document separates its earlier development
 from the extension produced during the OpenAI Build Week 2026 submission period.
 
@@ -66,8 +70,10 @@ The eligible extension includes:
 - LiveWeave input-boundary and project-model hardening.
 - A bounded Android/ADB bridge inside the shared `cu_*` computer-use broker: explicit device enrolment, an
   operator-selected and SHA-256-pinned `adb.exe`, observe-only inventory/screenshot/UI-tree/log actions,
-  approval-held tap/type/swipe/key actions, bounded output and timeouts, per-harness driver policy, and panic-stop
-  cancellation. No raw `adb shell` surface is exposed to harnesses.
+  approval-held APK install/tap/type/swipe/key actions, bounded output and timeouts, per-harness driver policy, and
+  panic-stop cancellation. APK approval is bound to Foreman's canonical path, byte count and SHA-256, then re-pinned
+  and re-verified at execution so a same-path package swap cannot ride an earlier approval. No raw `adb shell`
+  surface is exposed to harnesses.
 - New transport, security, scanner, event-log, scheduled-audit, and release-validation tests.
 
 ## Installation and judge testing

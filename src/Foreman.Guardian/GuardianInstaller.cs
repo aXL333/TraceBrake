@@ -11,7 +11,7 @@ namespace Foreman.Guardian;
 /// <summary>
 /// Installs / uninstalls the guardian as a LocalSystem Windows service (circle-back Phase A, the privilege
 /// boundary). Runs ELEVATED (the app launches it with runas). Steps, in order, idempotent + rolled back on failure:
-///   1. LPE guard — verify this binary is the genuine same-publisher Foreman before it can become SYSTEM.
+///   1. LPE guard — verify this binary is the genuine same-publisher TraceBrake before it can become SYSTEM.
 ///   2. Copy the guardian payload to %ProgramFiles%\Foreman\guardian (NOT user-writable).
 ///   3. ACL it: SYSTEM + Administrators full, Users read+execute (no write) — the agent can't tamper the binary.
 ///   4. Create + ACL %ProgramData%\Foreman\guardian as SYSTEM/Admins only (no interactive user) for SYSTEM state.
@@ -27,7 +27,7 @@ namespace Foreman.Guardian;
 internal static class GuardianInstaller
 {
     public const string ServiceName = "Foreman.Guardian";
-    public const string DisplayName = "Foreman Agent Safety Guardian";
+    public const string DisplayName = "TraceBrake Guardian";
 
     public static string ProgramFilesDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Foreman", "guardian");
@@ -43,7 +43,7 @@ internal static class GuardianInstaller
             return 2;
         }
 
-        // 1. LPE guard — refuse to register a binary that isn't the genuine, same-publisher Foreman as SYSTEM.
+        // 1. LPE guard — refuse to register a binary that isn't the genuine, same-publisher TraceBrake as SYSTEM.
         string? recordedInstallRoot;
         try { recordedInstallRoot = GuardianInstallRoot.Read(); }
         catch (Exception ex) { log($"install REFUSED (root anchor): {ex.Message}"); return 2; }

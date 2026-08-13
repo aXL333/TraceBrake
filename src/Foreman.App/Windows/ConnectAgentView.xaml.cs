@@ -20,7 +20,7 @@ public partial class ConnectAgentView : UserControl
     private readonly Func<string, string> _mint;   // mints a per-harness (scoped) token
     private readonly Func<IReadOnlyList<McpClientInfo>>? _getClients;
     private readonly Func<string>? _beginPairing;   // begins extension pairing, returns the on-screen code
-    private readonly Func<IReadOnlyCollection<string>>? _getRunningHarnessIds;   // harness ids Foreman sees running now
+    private readonly Func<IReadOnlyCollection<string>>? _getRunningHarnessIds;   // harness ids TraceBrake sees running now
     private readonly Func<bool>? _isLiveWeaveConnected;   // true when the LiveWeave extension has checked in recently
 
     /// <summary>Reads/sets the mediated computer-use (cu_*) driver harness; wired by TrayController to the
@@ -54,7 +54,7 @@ public partial class ConnectAgentView : UserControl
         public bool IsChecked { get; set; }
     }
 
-    // Candidate driver ids offered in the checklist ("any" = all harnesses), plus whatever Foreman sees running.
+    // Candidate driver ids offered in the checklist ("any" = all harnesses), plus whatever TraceBrake sees running.
     private List<string> CuDriverCandidates()
     {
         var ids = new List<string> { "any", "claude-code", "codex", "cursor",
@@ -133,8 +133,8 @@ public partial class ConnectAgentView : UserControl
             "Server entry (JSON):\r\n" +
             ClaudeMcpConnector.BuildServerEntrySnippet(_port, _token);
         TokenNote.Text =
-            "Claude Code and Codex each get their own scoped token (they can only see themselves in Foreman). " +
-            "The generic config above uses your full-access install token at %LocalAppData%\\Foreman\\mcp.token — " +
+            "Claude Code and Codex each get their own scoped token (they can only see themselves in TraceBrake). " +
+            "The generic config above uses your full-access install token at %LocalAppData%\\TraceBrake\\mcp.token — " +
             "keep it private. /health is open; /mcp requires a token.";
         PopulateCuDriverChoices();
         RefreshConnected();
@@ -147,7 +147,7 @@ public partial class ConnectAgentView : UserControl
         // per-request sessions, so the raw list can carry dozens of duplicate entries for a single agent. Group
         // by identity and show a (×N) session count, so the count stays visible without flooding the header.
         ConnectedText.Text = clients.Count == 0
-            ? "No agents are connected to Foreman Agent Safety yet. Connect one below, then restart it."
+            ? "No agents are connected to TraceBrake yet. Connect one below, then restart it."
             : "Connected now:\n" + string.Join("\n", clients
                 .GroupBy(c => (c.Name, c.Version, c.Sampling))
                 .OrderBy(g => g.Key.Name, StringComparer.OrdinalIgnoreCase)
@@ -177,12 +177,12 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update Claude Code's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste JSON below instead.",
-                "Foreman Agent Safety — Connect Claude Code", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect Claude Code", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
                 $"{r.Message}\n\nRestart Claude Code to connect." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect Claude Code", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect Claude Code", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -193,13 +193,13 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update Codex's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste TOML below instead.",
-                "Foreman Agent Safety — Connect Codex", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect Codex", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
-                $"{r.Message}\n\nStart Codex in a NEW terminal to connect and load the Foreman Agent Safety " +
+                $"{r.Message}\n\nStart Codex in a NEW terminal to connect and load the TraceBrake " +
                 "instructions (Codex reads the bearer token from the environment variable at launch)." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect Codex", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect Codex", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -210,12 +210,12 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update Cursor's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste JSON below instead.",
-                "Foreman Agent Safety — Connect Cursor", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect Cursor", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
-                $"{r.Message}\n\nRestart Cursor, or refresh the \"foreman\" server in Settings → Tools & MCP, to connect." +
+                $"{r.Message}\n\nRestart Cursor, or refresh the legacy-compatible \"foreman\" server in Settings → Tools & MCP, to connect." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect Cursor", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect Cursor", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -226,12 +226,12 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update OpenCode's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste JSON below instead.",
-                "Foreman Agent Safety — Connect OpenCode", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect OpenCode", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
                 $"{r.Message}\n\nRestart OpenCode to connect." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect OpenCode", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect OpenCode", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -242,12 +242,12 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update GitHub Copilot CLI's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste JSON below instead.",
-                "Foreman Agent Safety — Connect Copilot CLI", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect Copilot CLI", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
                 $"{r.Message}\n\nRestart Copilot CLI (or run /mcp) to connect." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect Copilot CLI", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect Copilot CLI", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -258,12 +258,12 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update Gemini CLI's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste JSON below instead.",
-                "Foreman Agent Safety — Connect Gemini CLI", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect Gemini CLI", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
                 $"{r.Message}\n\nRestart Gemini CLI to connect." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect Gemini CLI", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect Gemini CLI", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -274,13 +274,13 @@ public partial class ConnectAgentView : UserControl
             MessageBox.Show(
                 $"Couldn't update LM Studio's config automatically:\n\n{r.Message}\n\n" +
                 "Use the copy-paste JSON below instead.",
-                "Foreman Agent Safety — Connect LM Studio", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "TraceBrake — Connect LM Studio", MessageBoxButton.OK, MessageBoxImage.Warning);
         else
             MessageBox.Show(
                 $"{r.Message}\n\nLM Studio reloads mcp.json automatically. Caveat emptor: if LM Studio ignores " +
-                "the Authorization header, Foreman will reject the connection — check LM Studio's MCP panel." +
+                "the Authorization header, TraceBrake will reject the connection — check LM Studio's MCP panel." +
                 (r.BackupPath is { } b ? $"\n\nBackup saved: {b}" : ""),
-                "Foreman Agent Safety — Connect LM Studio", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect LM Studio", MessageBoxButton.OK, MessageBoxImage.Information);
         RefreshConnected();
     }
 
@@ -291,10 +291,10 @@ public partial class ConnectAgentView : UserControl
         Copy(T3Box.Text, "T3 Code config copied.");
         MessageBox.Show(
             "T3 Code runs an underlying agent (Claude Code, Codex, or OpenCode) and doesn't have its own MCP " +
-            "config file. Connect that agent using its card above — T3 Code will use the same Foreman MCP " +
-            "server, and Foreman monitors T3 Code itself as the control plane.\n\n" +
+            "config file. Connect that agent using its card above — T3 Code will use the same TraceBrake MCP " +
+            "server, and TraceBrake monitors T3 Code itself as the control plane.\n\n" +
             "The config has been copied to your clipboard for whichever agent T3 Code drives.",
-            "Foreman Agent Safety — Connect T3 Code", MessageBoxButton.OK, MessageBoxImage.Information);
+            "TraceBrake — Connect T3 Code", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CopyCliClick(object sender, RoutedEventArgs e) =>
@@ -335,19 +335,19 @@ public partial class ConnectAgentView : UserControl
 
     private void PairExtensionClick(object sender, RoutedEventArgs e) =>
         BeginPairingFlow(
-            title: "Foreman Agent Safety — Pair browser extension",
+            title: "TraceBrake — Pair browser extension",
             extraInstructions:
-                "In the Foreman browser extension, open its Options page and paste this code within 2 minutes. " +
+                "In the TraceBrake browser extension, open its Options page and paste this code within 2 minutes. " +
                 "The code never leaves your machine — the extension proves it holds the code over a loopback " +
                 "challenge/response.\n\n" +
-                "The same code works for both the Foreman safety extension and LiveWeave — each declares which " +
+                "The same code works for both the TraceBrake safety extension and LiveWeave — each declares which " +
                 "harness it is when it pairs.");
 
     private void PairLiveWeaveClick(object sender, RoutedEventArgs e) =>
         BeginPairingFlow(
-            title: "Foreman Agent Safety — Pair LiveWeave extension",
+            title: "TraceBrake — Pair LiveWeave extension",
             extraInstructions:
-                "Open the Foreman browser extension options, choose LiveWeave local page builder mode, set a driver " +
+                "Open the TraceBrake browser extension options, choose LiveWeave local page builder mode, set a driver " +
                 "harness such as codex or claude-code, and enter this code within 2 minutes. The code never leaves " +
                 "your machine; LiveWeave proves it holds the code over a loopback challenge/response.\n\n" +
                 "Once linked, only the selected driver harness, or the operator token, can drive LiveWeave. " +
@@ -380,12 +380,12 @@ public partial class ConnectAgentView : UserControl
         onPaired?.Invoke();
     }
 
-    // One-click "connect everything": writes (or refreshes) the Foreman MCP entry — with a fresh scoped token —
-    // for every agent Foreman sees running, that's already configured here, or that's installed on disk. This both
+    // One-click "connect everything": writes (or refreshes) the TraceBrake MCP entry — with a fresh scoped token —
+    // for every agent TraceBrake sees running, that's already configured here, or that's installed on disk. This both
     // connects not-yet-wired agents AND repairs stale tokens on the configured ones (robust against a rotated
     // install secret, which silently 401s every saved token), in a single pass. Agents that are none of
-    // running/configured/installed are left untouched, so Foreman never litters config for tools you don't use.
-    // Logged via the bus so it lands in the event log / OS event log. Foreman writes the config; each agent opens
+    // running/configured/installed are left untouched, so TraceBrake never litters config for tools you don't use.
+    // Logged via the bus so it lands in the event log / OS event log. TraceBrake writes the config; each agent opens
     // the MCP session on its NEXT start/restart — there's no way to force a running client to dial in.
     private void ConnectAllClick(object sender, RoutedEventArgs e)
     {
@@ -395,7 +395,7 @@ public partial class ConnectAgentView : UserControl
         {
             MessageBox.Show(
                 "No running, configured, or installed agents were found to connect. Connect one using a card below.",
-                "Foreman Agent Safety — Connect all agents", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Connect all agents", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -405,17 +405,17 @@ public partial class ConnectAgentView : UserControl
         EventBus.Instance.Publish(new InfoEvent(
             DateTimeOffset.UtcNow,
             "Connect.All",
-            $"Connect-all wrote Foreman MCP config for {ok.Length}/{results.Count} agent(s): {string.Join(", ", results.Select(r => r.HarnessId))}."));
+            $"Connect-all wrote TraceBrake MCP config for {ok.Length}/{results.Count} agent(s): {string.Join(", ", results.Select(r => r.HarnessId))}."));
 
         var msg = (ok.Length > 0
-                ? $"Wrote Foreman config for: {string.Join(", ", ok.Select(r => r.DisplayName))}.\n\n" +
-                  "Restart those agents (or refresh their MCP server) to connect — Foreman can't open the session for them."
+                ? $"Wrote TraceBrake config for: {string.Join(", ", ok.Select(r => r.DisplayName))}.\n\n" +
+                  "Restart those agents (or refresh their MCP server) to connect — TraceBrake can't open the session for them."
                 : "")
             + (failed.Length > 0
                 ? $"\n\nCouldn't update: {string.Join("; ", failed.Select(f => $"{f.DisplayName} ({f.Message})"))}"
                 : "");
         MessageBox.Show(msg.Trim(),
-            "Foreman Agent Safety — Connect all agents",
+            "TraceBrake — Connect all agents",
             MessageBoxButton.OK,
             failed.Length > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         RefreshConnected();

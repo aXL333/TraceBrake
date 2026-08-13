@@ -10,8 +10,8 @@ public sealed record PairingResult(bool Ok, string? Origin, string Reason)
 }
 
 /// <summary>
-/// Server-side state machine for pairing a Foreman browser extension over loopback WITHOUT the pairing code
-/// ever crossing the wire. Flow: the operator clicks "Pair" in Foreman's GUI → <see cref="Begin"/> mints a
+/// Server-side state machine for pairing a TraceBrake browser extension over loopback WITHOUT the pairing code
+/// ever crossing the wire. Flow: the operator clicks "Pair" in TraceBrake's GUI → <see cref="Begin"/> mints a
 /// short, human-typeable code shown on screen → the user types it into the extension → the extension proves it
 /// holds the code via a <see cref="ChallengeResponse"/> (the code is the HMAC key; only a fresh nonce + the
 /// response transit the link) → on success the extension's <c>chrome-extension://</c> origin is returned to add

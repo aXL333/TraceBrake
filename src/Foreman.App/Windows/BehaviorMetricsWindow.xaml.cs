@@ -84,7 +84,7 @@ public partial class BehaviorMetricsWindow : UserControl, IDisposable
         {
             var r = MessageBox.Show(
                 $"Kill all running '{vm.DisplayName}' processes?\n\nThis will immediately terminate the harness.",
-                "Foreman Agent Safety — Confirm Kill",
+                "TraceBrake — Confirm Kill",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
 
@@ -123,7 +123,7 @@ public partial class BehaviorMetricsWindow : UserControl, IDisposable
             MessageBox.Show(
                 $"No alert detail has been recorded for '{displayName}' yet — only its escalation metrics " +
                 "(shown here). The audit tools (Ask Harness, Send for Audit) open from any of its alerts in the Event Log.",
-                "Foreman Agent Safety — Audit", MessageBoxButton.OK, MessageBoxImage.Information);
+                "TraceBrake — Audit", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private static ForemanEvent? FindAuditEvent(string harnessId)

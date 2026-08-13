@@ -1,5 +1,5 @@
 /**
- * Minimal MCP streamable-HTTP client for Foreman's loopback server.
+ * Minimal MCP streamable-HTTP client for TraceBrake's loopback server.
  * Handles initialize → notifications/initialized → tools/call with SSE or JSON bodies.
  */
 

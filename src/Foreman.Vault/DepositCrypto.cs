@@ -5,7 +5,7 @@ namespace Foreman.Vault;
 
 /// <summary>
 /// ECIES (NIST P-256 ECDH -> HKDF-SHA256 -> AES-256-GCM) for the locked-vault DEPOSIT QUEUE. A self-signup that happens
-/// while the vault is LOCKED cannot write the encrypted store (no key), so Foreman encrypts the freshly-generated
+/// while the vault is LOCKED cannot write the encrypted store (no key), so TraceBrake encrypts the freshly-generated
 /// credential to the vault's DEPOSIT PUBLIC KEY - held in the clear, usable while locked - and queues the ciphertext.
 /// On unlock the matching PRIVATE KEY (sealed inside the vault) decrypts it for operator review. All in-box: no rolled
 /// crypto, no new dependency. Each deposit uses a fresh ephemeral keypair + random salt, so deposits are independent and

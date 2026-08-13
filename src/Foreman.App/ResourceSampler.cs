@@ -11,7 +11,7 @@ namespace Foreman.App;
 /// medium integrity) yields zeros rather than throwing.
 ///
 /// Network is deliberately absent — per-process network bytes need an elevated ETW session, which
-/// Foreman does not run by default.
+/// TraceBrake does not run by default.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class ResourceSampler : IDisposable

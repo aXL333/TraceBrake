@@ -74,7 +74,7 @@ public partial class EscalationAlarmWindow : Window
         var r = MessageBox.Show(
             $"Immediately kill all running '{_event.HarnessDisplayName}' processes?\n\n" +
             "This cannot be undone. Any unsaved work by the harness will be lost.",
-            "Foreman Agent Safety — Confirm Emergency Kill",
+            "TraceBrake — Confirm Emergency Kill",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 

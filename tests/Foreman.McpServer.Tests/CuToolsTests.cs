@@ -2,6 +2,7 @@ using System.Text.Json;
 using Foreman.Core.ComputerUse;
 using Foreman.Core.Events;
 using Foreman.Core.Models;
+using Foreman.Core.Settings;
 
 namespace Foreman.McpServer.Tests;
 
@@ -120,6 +121,40 @@ public sealed class CuToolsTests
     }
 
     [Fact]
+    public async Task CuSubmit_AndroidInstall_EverySelectedHarnessUsesUnifiedBrokerAndIsHeld()
+    {
+        var apk = Path.Combine(Path.GetTempPath(), $"foreman-{Guid.NewGuid():N}.apk");
+        File.WriteAllText(apk, "MCP APK package bytes");
+        try
+        {
+            StateWithAndroid("codex", "claude-code");
+            var args = JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["serial"] = "device-1",
+                ["apkPath"] = apk,
+                ["replace"] = "true",
+            });
+
+            using var codex = Json(await ForemanMcpTools.CuSubmit(
+                "android", "install", args, AsHarness("codex")));
+            using var claude = Json(await ForemanMcpTools.CuSubmit(
+                "android", "install", args, AsHarness("claude-code")));
+            using var cursor = Json(await ForemanMcpTools.CuSubmit(
+                "android", "install", args, AsHarness("cursor")));
+
+            Assert.True(codex.RootElement.GetProperty("accepted").GetBoolean());
+            Assert.Equal("held", codex.RootElement.GetProperty("state").GetString());
+            Assert.True(claude.RootElement.GetProperty("accepted").GetBoolean());
+            Assert.Equal("held", claude.RootElement.GetProperty("state").GetString());
+            Assert.False(cursor.RootElement.GetProperty("accepted").GetBoolean());
+        }
+        finally
+        {
+            File.Delete(apk);
+        }
+    }
+
+    [Fact]
     public async Task CuSubmit_Android_ComputerUsePolicyIsEnforced()
     {
         var state = StateWithAndroid("codex");
@@ -133,6 +168,24 @@ public sealed class CuToolsTests
 
         Assert.False(result.RootElement.GetProperty("accepted").GetBoolean());
         Assert.Equal("blocked", result.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task CuSubmit_BrowserAskFirst_EntersActionableHeldQueue()
+    {
+        var state = StateWith(CuVerdict.Allow("test"));
+        state.Cu!.SetDriver("codex");
+        state.HarnessCapabilityRestrictions["codex"] = new Foreman.Core.Mcp.HarnessCapabilityRestrictions
+        {
+            BrowserUse = Foreman.Core.Mcp.HarnessCapabilityAccess.AskFirst,
+        };
+
+        using var result = Json(await ForemanMcpTools.CuSubmit(
+            "browser", "read", "{}", AsHarness("codex")));
+
+        Assert.True(result.RootElement.GetProperty("accepted").GetBoolean());
+        Assert.Equal("held", result.RootElement.GetProperty("state").GetString());
+        Assert.Single(state.Cu.ListHeld());
     }
 
     [Fact]
@@ -330,6 +383,24 @@ public sealed class CuToolsTests
         StateWith(CuVerdict.Allow("test"));
         using var doc = Json(ForemanMcpTools.CuSetDriver("codex", AsHarness("codex")));   // a non-operator harness
         Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public void CuSetDriver_PersisterReceivesAuthenticatedMcpProvenance()
+    {
+        var state = StateWith(CuVerdict.Allow("test"));
+        SettingsChangeAttribution? observed = null;
+        state.Cu!.DriverPersister = _ => observed = SettingsChangeContext.Current;
+
+        using var doc = Json(ForemanMcpTools.CuSetDriver("codex"));
+
+        Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.NotNull(observed);
+        Assert.Equal(SettingsChangeOrigin.AuthenticatedMcp, observed!.Origin);
+        Assert.Equal("operator-token", observed.Actor);
+        Assert.Equal("cu_set_driver", observed.Operation);
+        Assert.False(observed.Suspicious);
+        Assert.Null(SettingsChangeContext.Current);
     }
 
     // ── cu_resolve_vault (the browser-extension executor's reference -> plaintext resolve) ──────────────────

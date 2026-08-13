@@ -2,7 +2,7 @@
 
 Status: planning artifact.
 
-Scope: make Foreman Agent Safety viable on Arch Linux as a first-class local agent, while preserving the existing Windows tray app and Windows-specific security backend. This is not a promise that Linux can reproduce every Windows signal. It is an inventory of what exists, what is portable, what must be replaced, and the order of work that keeps the port honest.
+Scope: make TraceBrake viable on Arch Linux as a first-class local agent, while preserving the existing Windows tray app and Windows-specific security backend. This is not a promise that Linux can reproduce every Windows signal. It is an inventory of what exists, what is portable, what must be replaced, and the order of work that keeps the port honest.
 
 ## Executive view
 

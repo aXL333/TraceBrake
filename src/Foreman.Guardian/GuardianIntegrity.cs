@@ -12,7 +12,7 @@ namespace Foreman.Guardian;
 ///    same Authenticode signer as the guardian itself — so a same-user agent can't connect to the pipe and ask
 ///    the guardian to sign a forged chain head (which would defeat the entire prevention tier).
 ///  - INSTALL SELF-VERIFY (LPE guard): before registering itself as a LocalSystem service, the elevated guardian
-///    confirms its OWN binary carries the same signer as the installed Foreman.exe — so an agent that overwrote
+///    confirms its OWN binary carries the same signer as the installed TraceBrake.exe — so an agent that overwrote
 ///    the user-writable staged guardian binary can't get its code registered as SYSTEM.
 ///
 /// Install verification requires a signer match. An elevated helper must not be able to manufacture its own trust
@@ -29,7 +29,7 @@ public static class GuardianIntegrity
     public static (bool Trusted, string Reason) Decide(string? referenceSigner, string? subjectSigner)
     {
         if (referenceSigner is null)
-            return (false, "the Foreman reference is unsigned or its Authenticode signature is invalid.");
+            return (false, "the TraceBrake reference is unsigned or its Authenticode signature is invalid.");
         if (subjectSigner is null)
             return (false, "the subject binary is unsigned or its Authenticode signature is invalid, but the reference is signed.");
         if (!string.Equals(referenceSigner, subjectSigner, StringComparison.OrdinalIgnoreCase))
@@ -38,7 +38,7 @@ public static class GuardianIntegrity
     }
 
     /// <summary>
-    /// Install self-verify: is THIS guardian binary signed by the same publisher as Foreman.exe? The resolved live
+    /// Install self-verify: is THIS guardian binary signed by the same publisher as TraceBrake.exe? The resolved live
     /// launcher must also match the administrator-owned install root once one exists. A verified publisher may
     /// establish that root on first install; unsigned callers always fail closed. Never throws.
     /// </summary>
@@ -70,19 +70,19 @@ public static class GuardianIntegrity
     {
         if (string.IsNullOrWhiteSpace(foremanPath) || string.IsNullOrWhiteSpace(guardianPath) ||
             !GuardianInstallReference.LayoutMatches(foremanPath, guardianPath))
-            return (false, "the live launcher and guardian do not match Foreman's canonical staged layout.");
+            return (false, "the live launcher and guardian do not match TraceBrake's canonical staged layout.");
 
         var resolvedRoot = GuardianInstallRoot.RootForExecutable(foremanPath);
         if (!string.IsNullOrWhiteSpace(recordedInstallRoot) &&
             !string.Equals(resolvedRoot,
                 Path.TrimEndingDirectorySeparator(Path.GetFullPath(recordedInstallRoot)),
                 StringComparison.OrdinalIgnoreCase))
-            return (false, "the live launcher is outside the administrator-recorded Foreman install root.");
+            return (false, "the live launcher is outside the administrator-recorded TraceBrake install root.");
 
         if (referenceSigner is not null)
             return Decide(referenceSigner, subjectSigner);
 
-        return (false, "Foreman is unsigned; an administrator-owned argv-independent trust anchor is required before Guardian installation.");
+        return (false, "TraceBrake is unsigned; an administrator-owned argv-independent trust anchor is required before Guardian installation.");
     }
 
     /// <summary>Authenticode signer thumbprint IF the file's embedded signature is valid (chains to a trusted root); else null.</summary>

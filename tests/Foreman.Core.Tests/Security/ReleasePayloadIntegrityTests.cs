@@ -14,8 +14,8 @@ public sealed class ReleasePayloadIntegrityTests : IDisposable
     [Fact]
     public void ManifestedTree_Passes_ButRootDllSiblingFails()
     {
-        File.WriteAllText(Path.Combine(_root, "Foreman.exe"), "release");
-        WriteManifest("Foreman.exe");
+        File.WriteAllText(Path.Combine(_root, "TraceBrake.exe"), "release");
+        WriteManifest("TraceBrake.exe");
         Assert.True(ReleasePayloadIntegrity.Verify(_root).Trusted);
 
         File.WriteAllText(Path.Combine(_root, "version.dll"), "planted");

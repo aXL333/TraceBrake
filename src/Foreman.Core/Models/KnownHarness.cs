@@ -8,7 +8,7 @@ public enum HarnessCategory
     /// <summary>
     /// A local-model chat/inference host (LM Studio, Ollama, Jan, …). Its backend inference server is
     /// LONG-LIVED and sits I/O-silent between prompts BY DESIGN, so hang / idle-cleanup / orphan rules tuned for
-    /// coding agents would false-positive on it. Foreman still tracks it and applies a profile, but exempts it
+    /// coding agents would false-positive on it. TraceBrake still tracks it and applies a profile, but exempts it
     /// from those idle-driven signals.
     /// </summary>
     LocalModelHost,
@@ -24,7 +24,7 @@ public sealed record KnownHarness(
 );
 
 /// <summary>
-/// Registry of all harnesses Foreman knows how to detect.
+/// Registry of all harnesses TraceBrake knows how to detect.
 /// IDs must match what HarnessClassifier.Classify() writes into ProcessRecord.HarnessType.
 /// </summary>
 public static class KnownHarnesses
@@ -43,7 +43,7 @@ public static class KnownHarnesses
         new("cline",          "Cline / Continue / Roo", "Community",         "VS Code AI coding extensions (Cline, Continue, Roo Code)"),
 
         // ── Local-model chat / inference hosts ────────────────────────────────────────────────────────────
-        // Foreman tracks these like any harness, but their inference servers idle between prompts BY DESIGN, so
+        // TraceBrake tracks these like any harness, but their inference servers idle between prompts BY DESIGN, so
         // HarnessCategory.LocalModelHost exempts them from the hang / idle-cleanup / orphan signals (see KnownHarnesses.IsLocalModelHost).
         new("lm-studio",             "LM Studio",             "LM Studio",       "Local LLM desktop host (llama.cpp/MLX), OpenAI-compatible API on :1234", HarnessCategory.LocalModelHost),
         new("ollama",                "Ollama",                "Ollama",          "Local LLM server + model runner, API on :11434",                        HarnessCategory.LocalModelHost),

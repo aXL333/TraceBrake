@@ -16,7 +16,7 @@ public sealed class PresenceGate
 {
     /// <summary>
     /// Hard ceiling on the approval cache (B9 polish): however high the operator sets ApprovalTtlSeconds, a cached
-    /// tap expires within this window, so an old approval can't be replayed to keep weakening Foreman indefinitely
+    /// tap expires within this window, so an old approval can't be replayed to keep weakening TraceBrake indefinitely
     /// — there's always a re-tap at least this often. 5 minutes balances Strict-mode friction against staleness.
     /// </summary>
     public const int MaxApprovalTtlSeconds = 300;
@@ -111,7 +111,7 @@ public sealed class PresenceGate
 
     private static string PromptReason(WeakeningAction action) => action switch
     {
-        WeakeningAction.LowerTrust           => "Authorize lowering a harness's Trust",
+        WeakeningAction.LowerTrust           => "Authorize raising a harness's Trust level (fewer restrictions)",
         WeakeningAction.MuteProtectedAlert   => "Authorize muting a protected alert",
         WeakeningAction.DisableMonitoring    => "Authorize disabling monitoring of a harness",
         WeakeningAction.DisableReadAuditing  => "Authorize disabling credential read-auditing",
@@ -121,7 +121,7 @@ public sealed class PresenceGate
         WeakeningAction.ResumeComputerUse    => "Authorize resuming computer use after a panic stop",
         WeakeningAction.BindCuWindow         => "Authorize binding this window for AI computer use",
         WeakeningAction.EnrollLocalAgentHost => "Authorize a local AI agent to drive the desktop",
-        WeakeningAction.ExitForeman          => "Authorize quitting Foreman",
-        _                                    => "Authorize a Foreman security change",
+        WeakeningAction.ExitForeman          => "Authorize quitting TraceBrake",
+        _                                    => "Authorize a TraceBrake security change",
     };
 }

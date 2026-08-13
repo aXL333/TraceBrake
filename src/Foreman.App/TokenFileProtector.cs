@@ -8,7 +8,7 @@ namespace Foreman.App;
 /// <summary>
 /// Locks the MCP token file down to the current user only.
 ///
-/// The token gates the MCP endpoint, but the file is created under %LocalAppData%\Foreman and
+/// The token gates the MCP endpoint, but the file is created under %LocalAppData%\TraceBrake and
 /// would otherwise inherit that directory's ACL — which on some machines (e.g. sandbox setups)
 /// grants other principals read access, defeating the gate. Re-owning the file to the current
 /// user and removing inherited ACEs means only same-user processes can read the token.

@@ -13,7 +13,7 @@ namespace Foreman.McpServer;
 ///
 /// Deliberately does NOT launch stdio servers — spawning the very process you are suspicious of is
 /// worse than not scanning it, so stdio entries are skipped by the caller. No credentials are sent
-/// to third-party servers (Foreman has none for them); servers that require their own auth simply
+/// to third-party servers (TraceBrake has none for them); servers that require their own auth simply
 /// fail to enumerate and are reported as "unreachable".
 /// </summary>
 public sealed class McpToolProbe
@@ -33,7 +33,7 @@ public sealed class McpToolProbe
 
         // Pre-flight reachability/auth check with a FULLY-AWAITED request BEFORE creating the MCP client.
         // McpClient.CreateAsync spins a background receive loop; when an endpoint rejects the handshake with
-        // 401/403 (its own auth — Foreman holds no third-party credentials) or 405, that loop faults and,
+        // 401/403 (its own auth — TraceBrake holds no third-party credentials) or 405, that loop faults and,
         // because nothing awaits it, the fault surfaces later as an UNOBSERVED task exception (crash.log + a
         // spurious High OS-event). Such a server can't be scanned anyway, so detect it here and throw — the
         // caller already treats a throw as "unreachable" — without ever spinning the SDK's loop.
@@ -42,7 +42,7 @@ public sealed class McpToolProbe
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint          = endpoint,
-            Name              = $"Foreman scan: {server.Name}",
+            Name              = $"TraceBrake scan: {server.Name}",
             ConnectionTimeout = timeout,
         }, null);
 
@@ -100,7 +100,7 @@ public sealed class McpToolProbe
             {
                 throw new InvalidOperationException(
                     $"MCP endpoint not scannable (HTTP {(int)resp.StatusCode}): requires its own auth or is not a " +
-                    "streamable-HTTP MCP endpoint. Foreman holds no third-party credentials, so it is skipped.");
+                    "streamable-HTTP MCP endpoint. TraceBrake holds no third-party credentials, so it is skipped.");
             }
         }
     }

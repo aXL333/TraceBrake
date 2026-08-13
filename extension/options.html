@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Foreman Agent Safety — Pair</title>
+  <title>TraceBrake — Pair</title>
   <style>
     body { font-family: "Segoe UI", system-ui, sans-serif; background: #0d0f12; color: #e6e8ec; margin: 0; padding: 22px; }
     h1 { font-size: 18px; margin: 0 0 4px; }
@@ -22,8 +22,8 @@
   </style>
 </head>
 <body>
-  <h1>🔒 Pair with Foreman Agent Safety</h1>
-  <p>In Foreman (the desktop app), open <b>Pair browser extension</b> — it shows a short code. Type it below.
+  <h1>🔒 Pair with TraceBrake</h1>
+  <p>In TraceBrake (the desktop app), open <b>Pair browser extension</b> — it shows a short code. Type it below.
      The code never leaves your machine; this extension proves it over a loopback challenge/response.</p>
   <div class="row">
     <input id="code" placeholder="ABCDE-FGHJK" maxlength="11" autocomplete="off" spellcheck="false" />
@@ -31,7 +31,7 @@
   </div>
   <div id="msg"></div>
   <button id="close" class="secondary">Close</button>
-  <p style="margin-top:18px">Foreman must be running locally (default <code>http://127.0.0.1:54321</code>). Everything stays on this device.</p>
+  <p style="margin-top:18px">TraceBrake must be running locally (default <code>http://127.0.0.1:54321</code>). Everything stays on this device.</p>
   <script src="options.js"></script>
 </body>
 </html>

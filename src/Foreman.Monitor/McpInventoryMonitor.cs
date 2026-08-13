@@ -31,8 +31,7 @@ public sealed class McpInventoryMonitor : IDisposable
         _bus = bus;
         _ownPort = ownPort;
         _scan = scan ?? McpInventoryScanner.Scan;
-        var dir = baseDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman");
+        var dir = baseDir ?? Foreman.Core.ProductIdentity.LocalDataRoot;
         _seenFile    = Path.Combine(dir, "mcp-seen.json");
         _sourcesFile = Path.Combine(dir, "mcp-seen-sources.json");
     }
@@ -74,7 +73,7 @@ public sealed class McpInventoryMonitor : IDisposable
                     _bus.Publish(new InfoEvent(
                         DateTimeOffset.UtcNow,
                         "Foreman.McpInventory",
-                        $"Foreman MCP connector registered for {entry.Harness}: {Trunc(entry.Target, 100)}"));
+                        $"TraceBrake MCP connector registered for {entry.Harness}: {Trunc(entry.Target, 100)}"));
                     continue;
                 }
 
@@ -116,7 +115,7 @@ public sealed class McpInventoryMonitor : IDisposable
     }
 
     /// <summary>
-    /// True only for Foreman's OWN local MCP endpoint — name "foreman", http/sse, loopback, the
+    /// True only for TraceBrake's OWN local MCP endpoint — name "foreman", http/sse, loopback, the
     /// configured port, path "/mcp". Pinning the port (mirrors McpToolScanMonitor.IsScannableTarget)
     /// narrows the window where a config-writing attacker could name a server "foreman" on some other
     /// loopback port to demote the supply-chain alert to a silent Info.

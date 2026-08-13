@@ -2,7 +2,7 @@ namespace Foreman.McpServer;
 
 /// <summary>
 /// Durable hand-off for "Ask Harness" prompts. Server-initiated MCP delivery is best-effort, so
-/// harnesses can also poll Foreman for pending prompts and reply through MCP tools.
+/// harnesses can also poll TraceBrake for pending prompts and reply through MCP tools.
 /// </summary>
 public sealed record AskHarnessRequest(
     string RequestId,

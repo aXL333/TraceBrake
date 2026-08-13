@@ -165,7 +165,7 @@ public sealed class VaultService
     }
 
     // ── Locked-vault deposit queue (P-BM4b) ──────────────────────────────────────────────────────────────────────
-    // A self-signup that arrives while the vault is LOCKED can't write the encrypted store, so Foreman encrypts the
+    // A self-signup that arrives while the vault is LOCKED can't write the encrypted store, so TraceBrake encrypts the
     // generated credential to the deposit PUBLIC key (clear sidecar) and queues the ciphertext; the operator reviews +
     // commits each one on unlock. Because the public key is in the clear the queue is FORGEABLE, so: nothing
     // auto-commits, the review UI must show origin/harness/time as unverified CLAIMS, commit routes through the same

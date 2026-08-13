@@ -1,3 +1,4 @@
+using Foreman.App.Security;
 using Foreman.Core.Models;
 using Foreman.Core.Settings;
 using System.Windows;
@@ -40,6 +41,7 @@ public partial class MutesView : UserControl
 
     private void RemoveClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = SettingsChangeUiScope.Begin("remove-alert-mute");
         if (sender is FrameworkElement { Tag: MuteEntry entry })
         {
             _settings.Mutes.Remove(entry);
@@ -50,6 +52,7 @@ public partial class MutesView : UserControl
 
     private void ClearExpiredClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = SettingsChangeUiScope.Begin("clear-expired-alert-mutes");
         var now = DateTimeOffset.UtcNow;
         _settings.Mutes.RemoveAll(m => m.Until is { } u && u <= now);
         _persist();
@@ -58,6 +61,7 @@ public partial class MutesView : UserControl
 
     private void ClearAllClick(object sender, RoutedEventArgs e)
     {
+        using var provenance = SettingsChangeUiScope.Begin("clear-all-alert-mutes");
         _settings.Mutes.Clear();
         _persist();
         RefreshState();

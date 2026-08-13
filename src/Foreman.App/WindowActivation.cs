@@ -8,7 +8,7 @@ namespace Foreman.App;
 /// <summary>
 /// Reliably brings a WPF window to the foreground from a system-tray app.
 ///
-/// Two Windows quirks make this non-trivial, and Foreman hit both:
+/// Two Windows quirks make this non-trivial, and TraceBrake hit both:
 ///   1. SetForegroundWindow is refused for a process that is not already the foreground
 ///      app (focus-stealing prevention), so a window opened from a tray click silently
 ///      stays behind. We work around it by briefly attaching our input queue to the

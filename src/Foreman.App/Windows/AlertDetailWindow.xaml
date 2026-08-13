@@ -1,10 +1,10 @@
 <Window x:Class="Foreman.App.Windows.AlertDetailWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Foreman Agent Safety — Alert Detail"
+        Title="TraceBrake — Alert Detail"
         Icon="/Resources/foreman.ico"
-        Width="780" Height="560"
-        MinWidth="680" MinHeight="400"
+        Width="980" Height="720"
+        MinWidth="720" MinHeight="480"
         Background="{StaticResource BackgroundBrush}"
         Foreground="{StaticResource TextPrimaryBrush}"
         FontFamily="Segoe UI, Arial"
@@ -34,153 +34,208 @@
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />   <!-- r0: severity badge + event type label -->
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="6" />
-            <RowDefinition Height="Auto" />   <!-- r2: timestamp · source -->
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="14" />
-            <RowDefinition Height="Auto" />   <!-- r4: rule badge (command alerts only) -->
-            <RowDefinition Height="10" />
-            <RowDefinition Height="Auto" />   <!-- r6: originating process (command alerts only) -->
-            <RowDefinition Height="10" />
-            <RowDefinition Height="Auto" />   <!-- r8: command line box -->
+            <RowDefinition Height="*" />
             <RowDefinition Height="14" />
-            <RowDefinition Height="*" />      <!-- r10: scrollable why + what-to-do -->
-            <RowDefinition Height="14" />
-            <RowDefinition Height="Auto" />   <!-- r12: action buttons -->
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ── Header ────────────────────────────────────────────────────── -->
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="12" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-
             <Border Grid.Column="0" CornerRadius="4" Padding="10,4"
                     Background="{Binding SeverityBackground}">
-                <TextBlock Text="{Binding SeverityLabel}"
-                           Foreground="White" FontWeight="Bold" FontSize="12"
-                           VerticalAlignment="Center" />
+                <TextBlock Text="{Binding SeverityLabel}" Foreground="White"
+                           FontWeight="Bold" FontSize="12" VerticalAlignment="Center" />
             </Border>
-
             <TextBlock Grid.Column="2" Text="{Binding EventTypeLabel}"
                        FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"
                        Foreground="{StaticResource TextPrimaryBrush}" />
         </Grid>
 
-        <!-- ── Timestamp · Source ────────────────────────────────────────── -->
         <StackPanel Grid.Row="2" Orientation="Horizontal">
-            <TextBlock Text="{Binding TimestampLabel}"
-                       Foreground="{StaticResource TextMutedBrush}" FontSize="11"
-                       FontFamily="Consolas, Courier New" />
-            <TextBlock Text="  ·  "
-                       Foreground="{StaticResource TextMutedBrush}" FontSize="11" />
-            <TextBlock Text="{Binding Source}"
-                       Foreground="{StaticResource TextMutedBrush}" FontSize="11" />
+            <TextBlock Text="{Binding TimestampLabel}" Foreground="{StaticResource TextMutedBrush}"
+                       FontSize="11" FontFamily="Consolas, Courier New" />
+            <TextBlock Text="  ·  " Foreground="{StaticResource TextMutedBrush}" FontSize="11" />
+            <TextBlock Text="{Binding Source}" Foreground="{StaticResource TextMutedBrush}" FontSize="11" />
         </StackPanel>
 
-        <!-- ── Rule badge (CommandAlertEvent only) ───────────────────────── -->
-        <Border Grid.Row="4" Background="#FF1A1C24" CornerRadius="4" Padding="12,8"
-                Visibility="{Binding RuleInfoVisibility}">
+        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
             <StackPanel>
-                <TextBlock Text="RULE TRIGGERED" Style="{StaticResource SectionHeader}" />
-                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                    <Border Background="#FF12141A" CornerRadius="3" Padding="5,2" Margin="0,0,8,0">
-                        <TextBlock Text="{Binding RuleId}"
-                                   FontFamily="Consolas, Courier New" FontSize="11"
-                                   Foreground="{StaticResource AccentBrush}" />
+                <!-- Generated for all event types. Inferences are visually distinct from recorded telemetry. -->
+                <Grid Margin="0,0,0,7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="ATTRIBUTION CHAIN" Style="{StaticResource SectionHeader}"
+                               AutomationProperties.Name="Attribution chain" />
+                    <Border Grid.Column="1" Background="#FF1A1C24" CornerRadius="3" Padding="7,2">
+                        <TextBlock Text="{Binding AttributionCoverageLabel}" FontSize="10"
+                                   Foreground="{StaticResource TextMutedBrush}" />
                     </Border>
-                    <TextBlock Text="{Binding RuleName}"
-                               FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
+                </Grid>
 
-        <!-- ── Originating process (CommandAlertEvent only) ───────────────── -->
-        <Border Grid.Row="6" Background="#FF1A1C24" CornerRadius="4" Padding="12,8"
-                Visibility="{Binding ProcessInfoVisibility}">
-            <StackPanel>
-                <TextBlock Text="ORIGINATING PROCESS" Style="{StaticResource SectionHeader}" />
-                <!-- process name + pid -->
-                <TextBlock Text="{Binding ProcessLine}"
-                           FontFamily="Consolas, Courier New" FontSize="11"
-                           Foreground="{StaticResource TextPrimaryBrush}"
-                           Margin="0,2,0,0" />
-                <!-- harness type / child-of label -->
-                <TextBlock Text="{Binding HarnessLine}"
-                           FontSize="11" FontFamily="Segoe UI, Arial"
-                           Foreground="{StaticResource AccentBrush}"
-                           Margin="0,3,0,0"
-                           Visibility="{Binding HarnessLineVisibility}" />
-                <!-- escalation badge + session alert summary -->
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                            Visibility="{Binding EscalationLineVisibility}">
-                    <Border CornerRadius="3" Padding="5,2" Margin="0,0,8,0"
-                            Background="{Binding EscalationBadgeBg}">
-                        <TextBlock Text="{Binding EscalationLevelLabel}"
-                                   Foreground="{Binding EscalationBadgeFg}"
-                                   FontWeight="Bold" FontSize="10"
-                                   VerticalAlignment="Center" />
-                    </Border>
-                    <TextBlock Text="{Binding EscalationSummary}"
-                               FontSize="11" FontFamily="Segoe UI, Arial"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               VerticalAlignment="Center" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
+                <Border Background="#FF11151E" BorderBrush="#FF2B3342" BorderThickness="1"
+                        CornerRadius="6" Padding="14,12" Margin="0,0,0,7">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  PanningMode="HorizontalOnly">
+                        <ItemsControl ItemsSource="{Binding AttributionSteps}" Focusable="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Grid Width="58" Height="54"
+                                              Visibility="{Binding ConnectorVisibility}"
+                                              ToolTip="{Binding Evidence}">
+                                            <TextBlock Text="{Binding Relationship}" FontSize="9"
+                                                       TextAlignment="Center" Foreground="{Binding AccentBrush}"
+                                                       VerticalAlignment="Top" Margin="1,0" />
+                                            <Line X1="3" Y1="31" X2="48" Y2="31"
+                                                  Stroke="{Binding AccentBrush}" StrokeThickness="2">
+                                                <Line.Style>
+                                                    <Style TargetType="Line">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsInferred}" Value="True">
+                                                                <Setter Property="StrokeDashArray" Value="3,2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Line.Style>
+                                            </Line>
+                                            <Polygon Points="47,26 56,31 47,36" Fill="{Binding AccentBrush}" />
+                                        </Grid>
 
-        <!-- ── Command line ──────────────────────────────────────────────── -->
-        <Border Grid.Row="8" Background="#FF0D0F12" CornerRadius="4" Padding="12,8"
-                Visibility="{Binding CommandLineVisibility}">
-            <StackPanel>
-                <TextBlock Text="COMMAND" Style="{StaticResource SectionHeader}" />
-                <TextBox Text="{Binding CommandLine, Mode=OneWay}"
-                         IsReadOnly="True" Background="Transparent" BorderThickness="0"
-                         FontFamily="Consolas, Courier New" FontSize="11"
-                         Foreground="#FFCC9966" TextWrapping="Wrap"
-                         MaxHeight="72" IsTabStop="False" />
-            </StackPanel>
-        </Border>
+                                        <Border Width="148" MinHeight="132" Padding="10"
+                                                Margin="0,0,2,0" CornerRadius="6"
+                                                Background="{Binding FillBrush}"
+                                                BorderBrush="{Binding AccentBrush}" BorderThickness="1"
+                                                ToolTip="{Binding Evidence}"
+                                                AutomationProperties.Name="{Binding Title}">
+                                            <StackPanel>
+                                                <Border Width="46" Height="46" CornerRadius="23"
+                                                        Background="{Binding AccentBrush}"
+                                                        HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                    <TextBlock Text="{Binding Glyph}" FontSize="16" FontWeight="Bold"
+                                                               Foreground="White" HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" />
+                                                </Border>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                           TextAlignment="Center" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="10" Margin="0,4,0,6"
+                                                           TextAlignment="Center" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextMutedBrush}" />
+                                                <Border Background="#22FFFFFF" CornerRadius="2" Padding="5,1"
+                                                        HorizontalAlignment="Center">
+                                                    <TextBlock Text="{Binding EvidenceLabel}" FontSize="8"
+                                                               FontWeight="Bold" Foreground="{Binding AccentBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
 
-        <!-- ── Why dangerous + What to do ───────────────────────────────── -->
-        <ScrollViewer Grid.Row="10" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
+                <TextBlock Text="{Binding AttributionSummary}" TextWrapping="Wrap" FontSize="10"
+                           Foreground="{StaticResource TextMutedBrush}" Margin="1,0,0,16" />
+
+                <Border Background="#FF1A1C24" CornerRadius="4" Padding="12,8" Margin="0,0,0,10"
+                        Visibility="{Binding RuleInfoVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="RULE TRIGGERED" Style="{StaticResource SectionHeader}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <Border Background="#FF12141A" CornerRadius="3" Padding="5,2" Margin="0,0,8,0">
+                                <TextBlock Text="{Binding RuleId}" FontFamily="Consolas, Courier New" FontSize="11"
+                                           Foreground="{StaticResource AccentBrush}" />
+                            </Border>
+                            <TextBlock Text="{Binding RuleName}" FontWeight="SemiBold" FontSize="12"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FF1A1C24" CornerRadius="4" Padding="12,8" Margin="0,0,0,10"
+                        Visibility="{Binding ProcessInfoVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="ORIGINATING PROCESS" Style="{StaticResource SectionHeader}" />
+                        <TextBlock Text="{Binding ProcessLine}" FontFamily="Consolas, Courier New" FontSize="11"
+                                   Foreground="{StaticResource TextPrimaryBrush}" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding HarnessLine}" FontSize="11"
+                                   Foreground="{StaticResource AccentBrush}" Margin="0,3,0,0"
+                                   Visibility="{Binding HarnessLineVisibility}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                                    Visibility="{Binding EscalationLineVisibility}">
+                            <Border CornerRadius="3" Padding="5,2" Margin="0,0,8,0"
+                                    Background="{Binding EscalationBadgeBg}">
+                                <TextBlock Text="{Binding EscalationLevelLabel}"
+                                           Foreground="{Binding EscalationBadgeFg}"
+                                           FontWeight="Bold" FontSize="10" />
+                            </Border>
+                            <TextBlock Text="{Binding EscalationSummary}" FontSize="11"
+                                       Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FF0D0F12" CornerRadius="4" Padding="12,8" Margin="0,0,0,16"
+                        Visibility="{Binding CommandLineVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="COMMAND" Style="{StaticResource SectionHeader}" />
+                        <TextBox Text="{Binding CommandLine, Mode=OneWay}" IsReadOnly="True"
+                                 Background="Transparent" BorderThickness="0"
+                                 FontFamily="Consolas, Courier New" FontSize="11"
+                                 Foreground="#FFCC9966" TextWrapping="Wrap"
+                                 MaxHeight="72" IsTabStop="False" />
+                    </StackPanel>
+                </Border>
+
                 <TextBlock Text="WHAT THIS MEANS" Style="{StaticResource SectionHeader}" />
-                <TextBlock Text="{Binding WhyDangerous}"
-                           Style="{StaticResource BodyText}" Margin="0,0,0,18" />
-
+                <TextBlock Text="{Binding WhyDangerous}" Style="{StaticResource BodyText}" Margin="0,0,0,18" />
                 <TextBlock Text="RECOMMENDED ACTION" Style="{StaticResource SectionHeader}" />
-                <TextBlock Text="{Binding RecommendedAction}"
-                           Style="{StaticResource BodyText}" />
+                <TextBlock Text="{Binding RecommendedAction}" Style="{StaticResource BodyText}" />
             </StackPanel>
         </ScrollViewer>
 
-        <!-- ── Buttons ───────────────────────────────────────────────────── -->
-        <Grid Grid.Row="12">
-            <!-- Kill is isolated on the far left, away from Close/Acknowledge, so it can't be hit by accident. -->
-            <Button x:Name="KillProcessButton" Content="Kill/End Process" Click="KillProcessClick" HorizontalAlignment="Left"
-                    Background="#FF34191A" BorderBrush="#FF8A3A3A"
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="KillProcessButton" Content="Kill/End Process" Click="KillProcessClick"
+                    HorizontalAlignment="Left" Background="#FF34191A" BorderBrush="#FF8A3A3A"
                     Foreground="#FFFFDAD8" MinWidth="132"
                     ToolTip="Terminate the process this alert is about (after confirmation)." />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="AskHarnessButton" Content="Ask Harness" Click="AskHarnessClick" Margin="0,0,8,0"
-                        Background="#FF17243A" BorderBrush="#FF3E6FA8"
-                        Foreground="#FFE5EEF8" MinWidth="104"
+            <WrapPanel Grid.Column="1" HorizontalAlignment="Right">
+                <Button x:Name="AskHarnessButton" Content="Ask Harness" Click="AskHarnessClick" Margin="8,0,0,6"
+                        Background="#FF17243A" BorderBrush="#FF3E6FA8" Foreground="#FFE5EEF8" MinWidth="104"
                         ToolTip="Ask the harness that caused this alert to justify and/or act on it." />
-                <Button x:Name="SendForAuditButton" Content="Send for Audit" Click="SendForAuditClick" Margin="0,0,8,0"
-                        Background="#FF1A2A1F" BorderBrush="#FF3E8A57"
-                        Foreground="#FFDDF8E5" MinWidth="116"
+                <Button x:Name="SendForAuditButton" Content="Send for Audit" Click="SendForAuditClick" Margin="8,0,0,6"
+                        Background="#FF1A2A1F" BorderBrush="#FF3E8A57" Foreground="#FFDDF8E5" MinWidth="116"
                         ToolTip="Route this alert to a different agent for an independent review (alarming behavior only)." />
-                <Button x:Name="MuteButton" Content="Mute…" Click="MuteClick" Margin="0,0,8,0"
+                <Button x:Name="MuteButton" Content="Mute…" Click="MuteClick" Margin="8,0,0,6"
                         ToolTip="Quiet this kind of alert's popup (still logged, counted and escalated). Protected detections can only be snoozed briefly." />
-                <Button Content="Acknowledge" Click="AcknowledgeClick" Margin="0,0,8,0" />
-                <Button Content="Open Log"    Click="OpenLogClick"    Margin="0,0,8,0" />
-                <Button Content="Close"       Click="CloseClick"
+                <Button Content="Acknowledge" Click="AcknowledgeClick" Margin="8,0,0,6" />
+                <Button Content="Open Log" Click="OpenLogClick" Margin="8,0,0,6" />
+                <Button Content="Close" Click="CloseClick" Margin="8,0,0,6"
                         Background="{StaticResource AccentBrush}"
                         Foreground="#FF0D0F12" FontWeight="Bold" Padding="18,6" />
-            </StackPanel>
+            </WrapPanel>
         </Grid>
     </Grid>
 </Window>

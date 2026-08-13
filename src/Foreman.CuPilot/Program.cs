@@ -4,9 +4,9 @@ using System.Text;
 using System.Text.Json;
 using Foreman.Core.ComputerUse;
 
-// Foreman Local Agent Host PILOT shim (HOP A; L3: handshake + idle only - relay-free, capture-free, input-free).
+// TraceBrake Local Agent Host PILOT shim (HOP A; L3: handshake + idle only - relay-free, capture-free, input-free).
 //   Usage: Foreman.CuPilot --pipe <name> --nonce <secret> --parent <pid>
-// Foreman LAUNCHES this signed shim and pins its identity (PID == launched, parent == Foreman, signed image) exactly
+// TraceBrake LAUNCHES this signed shim and pins its identity (PID == launched, parent == Foreman, signed image) exactly
 // like the injector sidecar, so a same-user process cannot impersonate it on the broker-reaching hop. It connects to
 // the App's duplex owner-only control pipe, proves it holds the launch nonce via challenge-response (HMAC over the
 // handshake-tagged challenge; the nonce never crosses the wire), and services Hello/Heartbeat. In L4 it will host a

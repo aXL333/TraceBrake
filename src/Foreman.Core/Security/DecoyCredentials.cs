@@ -19,7 +19,7 @@ namespace Foreman.Core.Security;
 ///      beacons when the stolen key is USED against AWS.
 ///
 /// Placement is GAPS-ONLY: a decoy is written only where no real file exists, so a working ~/.aws/credentials
-/// or ~/.npmrc is never shadowed. A slot occupied by an EXISTING Foreman decoy (sentinel present — a prior
+/// or ~/.npmrc is never shadowed. A slot occupied by an EXISTING TraceBrake decoy (sentinel present — a prior
 /// install or a diverged settings lineage) is adopted and refreshed rather than skipped, so enabling decoys
 /// always ends with the on-disk decoys tracked. Removal only deletes files that still carry the Foreman
 /// sentinel, so a real file the user later created in a decoy slot is never destroyed.
@@ -35,13 +35,13 @@ public sealed class DecoyCredentialSettings
     /// <summary>Embed a real canarytokens.org / CloudTrail-watched AWS key in the aws-credentials decoy so a USED key beacons.</summary>
     public bool IncludeAwsCanaryToken { get; set; } = false;
 
-    /// <summary>The canarytoken AWS access-key id (user pastes one from canarytokens.org). Not a secret to Foreman — it's bait.</summary>
+    /// <summary>The canarytoken AWS access-key id (user pastes one from canarytokens.org). Not a secret to TraceBrake — it's bait.</summary>
     public string? AwsCanaryAccessKeyId { get; set; }
 
     /// <summary>The canarytoken AWS secret. Bait, not a real secret.</summary>
     public string? AwsCanarySecretAccessKey { get; set; }
 
-    /// <summary>Absolute paths Foreman has actually planted, so removal touches only its own decoys.</summary>
+    /// <summary>Absolute paths TraceBrake has actually planted, so removal touches only its own decoys.</summary>
     public List<string> PlantedPaths { get; set; } = [];
 
     /// <summary>
@@ -137,7 +137,7 @@ public sealed class SystemDecoyFileSystem : IDecoyFileSystem
 public static class DecoyCredentialPolicy
 {
     /// <summary>
-    /// Stable, recognizable sentinel embedded in every Foreman decoy (uses leetspeak zeroes so it never
+    /// Stable, recognizable sentinel embedded in every TraceBrake decoy (uses leetspeak zeroes so it never
     /// collides with a real AKIA-key/ghp-token). Detection rule cred-040 matches these; removal verifies a
     /// file still contains <see cref="SentinelMarker"/> before deleting it.
     /// </summary>
@@ -206,7 +206,7 @@ public static class DecoyCredentialPolicy
         var body = kind switch
         {
             // The trailing comment guarantees the sentinel is present even when a real canary key is used
-            // for the values, so Remove() can always verify this is Foreman's decoy before deleting it.
+            // for the values, so Remove() can always verify this is TraceBrake's decoy before deleting it.
             DecoyKind.AwsCredentials =>
                 $"[default]\naws_access_key_id = {awsKey}\naws_secret_access_key = {awsSecret}\n# {SentinelMarker}\n",
 
@@ -259,7 +259,7 @@ public static class DecoyCredentialPolicy
             : body + $"# {settings.InstanceSentinel}\n";
     }
 
-    /// <summary>True if the given text is one of Foreman's decoys (carries the sentinel) — gate removal on this.</summary>
+    /// <summary>True if the given text is one of TraceBrake's decoys (carries the sentinel) — gate removal on this.</summary>
     public static bool IsDecoyContent(string? text) =>
         text is not null &&
         (text.Contains(SentinelMarker, StringComparison.Ordinal) ||
@@ -302,7 +302,7 @@ public sealed record DecoyPlantResult(IReadOnlyList<string> Planted, IReadOnlyLi
 
 /// <summary>
 /// Plants and removes decoys using an injected file system. Plant is gaps-only; Remove deletes only files
-/// that still carry the Foreman sentinel (so a real file later created in a decoy slot is never destroyed).
+/// that still carry the TraceBrake sentinel (so a real file later created in a decoy slot is never destroyed).
 /// </summary>
 public sealed class DecoyCredentialManager(IDecoyFileSystem fs)
 {
@@ -336,7 +336,7 @@ public sealed class DecoyCredentialManager(IDecoyFileSystem fs)
         return new DecoyPlantResult(planted, skipped);
     }
 
-    /// <summary>Removes the recorded decoys — but only files that still contain the Foreman sentinel.</summary>
+    /// <summary>Removes the recorded decoys — but only files that still contain the TraceBrake sentinel.</summary>
     public IReadOnlyList<string> Remove(IEnumerable<string> plantedPaths)
     {
         var removed = new List<string>();
@@ -354,7 +354,7 @@ public sealed class DecoyCredentialManager(IDecoyFileSystem fs)
 
     /// <summary>
     /// Frees a single decoy slot so the user can put REAL credentials there. Sentinel-gated, so it only
-    /// ever deletes Foreman's own decoy — if the slot already holds real content it is left untouched.
+    /// ever deletes TraceBrake's own decoy — if the slot already holds real content it is left untouched.
     /// Returns true when a decoy was actually removed.
     /// </summary>
     public bool Release(string path) => Remove([path]).Contains(path);
@@ -362,7 +362,7 @@ public sealed class DecoyCredentialManager(IDecoyFileSystem fs)
     /// <summary>
     /// Re-checks tracked decoys. A slot is "reclaimed" when the file is gone or no longer carries the
     /// sentinel — i.e. the user (or a tool like <c>aws configure</c>) wrote real credentials over it. The
-    /// caller stops tracking and auditing reclaimed slots; Foreman NEVER deletes a reclaimed file. Slots
+    /// caller stops tracking and auditing reclaimed slots; TraceBrake NEVER deletes a reclaimed file. Slots
     /// that still carry the sentinel stay decoys. Run on startup and when Settings opens, so a slot the
     /// user repurposed for real credentials silently retires instead of false-alarming on every read.
     /// </summary>

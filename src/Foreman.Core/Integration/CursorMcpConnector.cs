@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 namespace Foreman.Core.Integration;
 
 /// <summary>
-/// One-click "connect Cursor to Foreman Agent Safety": writes a <c>foreman</c> entry into Cursor's global
+/// One-click "connect Cursor to TraceBrake": writes a <c>foreman</c> entry into Cursor's global
 /// <c>~/.cursor/mcp.json</c> under <c>mcpServers</c> as a remote server (a <c>url</c> + an
 /// <c>Authorization: Bearer</c> header — Cursor identifies a remote server by the presence of <c>url</c>;
 /// there is deliberately NO <c>type</c> field, which the docs reserve for local stdio servers).

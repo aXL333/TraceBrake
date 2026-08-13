@@ -6,9 +6,9 @@ namespace Foreman.App;
 
 /// <summary>
 /// Windows implementation of <see cref="IOsEventLogSink"/>: writes to the Application event log under the
-/// "Foreman Agent Safety" source so Foreman's lifecycle + significant events appear in Event Viewer
+/// legacy-compatible "Foreman Agent Safety" source so TraceBrake's lifecycle + significant events appear in Event Viewer
 /// (Defender-style) and survive the app being killed. Registering the source needs admin ONCE — done by the
-/// elevated sidecar (<c>Run Elevated</c>); until then this reports unavailable and Foreman keeps logging to disk.
+/// elevated sidecar (<c>Run Elevated</c>); until then this reports unavailable and TraceBrake keeps logging to disk.
 /// Every write is best-effort and never throws — an OS-log problem must never disturb the watchdog.
 /// </summary>
 public sealed class WindowsEventLogSink : IOsEventLogSink
@@ -66,7 +66,7 @@ public sealed class WindowsEventLogSink : IOsEventLogSink
     }
 
     /// <summary>
-    /// Reads back this source's own recent entries, newest first — the durable external record Foreman uses on
+    /// Reads back this source's own recent entries, newest first — the durable external record TraceBrake uses on
     /// launch to detect an offline log rollback (the LogChainAnchor) and a prior hard-kill (the last lifecycle
     /// run-marker). The Application log is shared, so we filter to our source and bound the raw scan so a busy box
     /// can't make startup crawl. Best-effort: any failure yields an empty list (→ no false rollback/kill alarm).
@@ -81,7 +81,7 @@ public sealed class WindowsEventLogSink : IOsEventLogSink
             var entries = log.Entries;
             var total = entries.Count;
             // Scan newest→oldest; stop once we have enough of OUR entries or we've examined a generous raw cap
-            // (Foreman writes sparsely, so its recent entries can be spread across many other-source entries).
+            // (TraceBrake writes sparsely, so its recent entries can be spread across many other-source entries).
             const int rawScanCap = 20_000;
             var scanned = 0;
             for (var i = total - 1; i >= 0 && found.Count < maxEntries && scanned < rawScanCap; i--, scanned++)

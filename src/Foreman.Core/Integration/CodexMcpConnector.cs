@@ -4,9 +4,9 @@ using System.Text.RegularExpressions;
 namespace Foreman.Core.Integration;
 
 /// <summary>
-/// One-click "connect Codex to Foreman Agent Safety": writes Foreman Agent Safety's streamable-HTTP MCP
+/// One-click "connect Codex to TraceBrake": writes TraceBrake's streamable-HTTP MCP
 /// server into Codex's user config (<c>~/.codex/config.toml</c>) and adds a
-/// bounded Foreman Agent Safety section to <c>~/.codex/AGENTS.md</c>.
+/// bounded TraceBrake section to <c>~/.codex/AGENTS.md</c>.
 ///
 /// Codex stores MCP servers as TOML tables under <c>[mcp_servers.&lt;name&gt;]</c>.
 /// This helper only owns the <c>foreman</c> table, preserves unrelated config,
@@ -50,11 +50,11 @@ public static class CodexMcpConnector
     public static string BuildAgentsInstructions() =>
         $"""
         {AgentsBeginMarker}
-        ## Foreman Agent Safety MCP Monitor
+        ## TraceBrake MCP Monitor
 
         When the `foreman` MCP server is available:
 
-        - Identify this agent as `harnessId: "codex"` when Foreman Agent Safety tools accept a harness id.
+        - Identify this agent as `harnessId: "codex"` when TraceBrake tools accept a harness id.
         - At the start of a new task, call `report_task_start(taskDescription, harnessId: "codex")`.
         - At task boundaries, or when your context window drops (e.g. below ~50%), call `report_usage(percentRemaining: <0-100>, harnessId: "codex")` so the operator can see your remaining context on the dashboard.
         - If `foreman_status` or `report_task_start` reports `pendingAskHarnessRequests`, call `list_ask_harness_requests(harnessId: "codex")`.
@@ -101,7 +101,7 @@ public static class CodexMcpConnector
                 ? ""
                 : new UTF8Encoding(false).GetString(hadBom ? bytes[3..] : bytes);
 
-            // Respect a user who wired their OWN bearer_token_env_var (a variable name other than Foreman's)
+            // Respect a user who wired their OWN bearer_token_env_var (a variable name other than TraceBrake's)
             // for this port - don't clobber their setup or touch their variable.
             var existingSection = ExtractForemanSection(original);
             if (existingSection is not null &&
@@ -111,7 +111,7 @@ public static class CodexMcpConnector
             {
                 var secureEntryMessage =
                     $"Codex already has a foreman entry using your own bearer_token_env_var ({existingVar}) for " +
-                    $"this port - left it unchanged. Set {existingVar} to Foreman's token to (re)connect.";
+                    $"this port - left it unchanged. Set {existingVar} to TraceBrake's token to (re)connect.";
 
                 return new ConnectResult(
                     ConnectStatus.Updated,
@@ -210,12 +210,12 @@ public static class CodexMcpConnector
             out var agentsError);
 
         if (agentsError is not null)
-            return message + $" Codex config is ready, but Foreman Agent Safety couldn't update AGENTS.md: {agentsError}";
+            return message + $" Codex config is ready, but TraceBrake couldn't update AGENTS.md: {agentsError}";
 
         if (!agentsChanged)
-            return message + " Foreman Agent Safety's Codex instructions in AGENTS.md were already current.";
+            return message + " TraceBrake's Codex instructions in AGENTS.md were already current.";
 
-        message += " Added/updated Foreman Agent Safety's Codex instructions in AGENTS.md.";
+        message += " Added/updated TraceBrake's Codex instructions in AGENTS.md.";
         if (agentsBackup is not null)
             message += $" AGENTS backup saved: {agentsBackup}";
         return message;

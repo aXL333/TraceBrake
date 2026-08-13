@@ -28,7 +28,7 @@ public sealed class NetworkRatesMessage
 /// <summary>
 /// One frame from the elevated sidecar: a READ of a decoy credential file was observed via Windows
 /// SACL auditing (Security Event 4663). The sidecar has already confirmed the path is a tracked decoy
-/// and the reader is not Foreman itself, so the app turns this straight into a Critical alert.
+/// and the reader is not TraceBrake itself, so the app turns this straight into a Critical alert.
 /// </summary>
 public sealed class DecoyReadMessage
 {

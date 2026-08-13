@@ -4,20 +4,20 @@ using System.Text.Json.Nodes;
 namespace Foreman.Core.Integration;
 
 /// <summary>
-/// One-click "connect LM Studio to Foreman Agent Safety": writes a <c>foreman</c> entry into LM Studio's
+/// One-click "connect LM Studio to TraceBrake": writes a <c>foreman</c> entry into LM Studio's
 /// <c>~/.lmstudio/mcp.json</c> under <c>mcpServers</c>.
 ///
 /// LM Studio has a confirmed bug (lmstudio-ai/lmstudio-bug-tracker#1892) where it does NOT forward the
-/// <c>Authorization</c> header to REMOTE MCP servers, so a direct <c>{ url, headers }</c> entry reaches Foreman's
+/// <c>Authorization</c> header to REMOTE MCP servers, so a direct <c>{ url, headers }</c> entry reaches TraceBrake's
 /// token-gated <c>/mcp</c> unauthenticated and is rejected (LM Studio then falls back to OAuth, which Foreman
 /// does not implement). The DEFAULT shape is therefore a LOCAL stdio bridge: LM Studio launches
 /// <c>mcp-remote</c> (a small, widely-used stdio-to-HTTP MCP proxy) which injects the bearer header itself and
-/// forwards to Foreman's loopback endpoint. Local stdio servers are not affected by #1892, so this works today.
+/// forwards to TraceBrake's loopback endpoint. Local stdio servers are not affected by #1892, so this works today.
 /// The bearer value is passed via an <c>AUTH</c> env var and referenced as <c>--header "Authorization:${AUTH}"</c>
 /// (mcp-remote's documented form for header values containing a space).
 ///
 /// TRADE-OFF: the bridge needs Node/<c>npx</c> on PATH and pulls <c>mcp-remote</c> from npm on first run (a
-/// third-party dependency - flagged plainly, since Foreman otherwise warns about npx-fetched packages). Pass
+/// third-party dependency - flagged plainly, since TraceBrake otherwise warns about npx-fetched packages). Pass
 /// <paramref name="useHeaderBridge"/> = false to emit the plain remote <c>{ url, headers }</c> form instead (the
 /// spec-correct shape that will work once LM Studio fixes #1892, and the right choice if you don't want npx).
 /// Everything else (atomic write, backup, fail-safe parse) is hardened the same as the other connectors.

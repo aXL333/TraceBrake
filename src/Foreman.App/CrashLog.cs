@@ -6,7 +6,7 @@ using System.Text;
 namespace Foreman.App;
 
 /// <summary>
-/// Best-effort fault log at %LocalAppData%\Foreman\crash.log. A watchdog must survive transient UI faults
+/// Best-effort fault log at %LocalAppData%\TraceBrake\crash.log. A watchdog must survive transient UI faults
 /// (the tray Shell_NotifyIcon API is flaky across Explorer restarts) and RECORD them, not crash. Never throws.
 /// </summary>
 internal static class CrashLog
@@ -37,8 +37,7 @@ internal static class CrashLog
                     return;
                 }
 
-                var dir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Foreman");
+                var dir = Foreman.Core.ProductIdentity.LocalDataRoot;
                 Directory.CreateDirectory(dir);
                 var path = Path.Combine(dir, "crash.log");
                 var repeatNote = _suppressed > 0

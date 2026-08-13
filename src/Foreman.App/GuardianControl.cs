@@ -22,7 +22,7 @@ internal static class GuardianControl
     {
         var exe = GuardianExePath;
         if (!File.Exists(exe))
-            return (false, "Guardian component not found next to Foreman. Reinstall Foreman Agent Safety.");
+            return (false, "Guardian component not found next to TraceBrake. Reinstall TraceBrake.");
 
         // Defense-in-depth pre-check (the elevated --install re-verifies authoritatively before sc create).
         var (trusted, reason) = SidecarIntegrity.Verify(exe);

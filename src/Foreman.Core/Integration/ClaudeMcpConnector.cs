@@ -8,7 +8,7 @@ public enum ConnectStatus { Added, Updated, Failed }
 public sealed record ConnectResult(ConnectStatus Status, string Message, string? BackupPath = null);
 
 /// <summary>
-/// One-click "connect Claude Code to Foreman Agent Safety": writes a user-scope <c>foreman</c> MCP server entry
+/// One-click "connect Claude Code to TraceBrake": writes a user-scope <c>foreman</c> MCP server entry
 /// into Claude Code's config (<c>~/.claude.json</c>), so the user never has to hand-edit JSON or copy
 /// a token. Mirrors exactly what <c>claude mcp add --scope user</c> does — a top-level
 /// <c>mcpServers.foreman</c> with the streamable-HTTP url and an <c>Authorization: Bearer</c> header —

@@ -1,7 +1,7 @@
 <Window x:Class="Foreman.App.Windows.HarnessSettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Harness settings" Width="620" Height="800"
+        Title="Harness settings" Width="620" Height="840"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource BackgroundBrush}"
         TextOptions.TextFormattingMode="Display">
@@ -48,23 +48,21 @@
             <WrapPanel x:Name="BadgePanel" Margin="0,8,0,0" />
         </StackPanel>
 
-        <!-- Trust slider -->
+        <!-- Trust level + universal profiles -->
         <Border Grid.Row="1" CornerRadius="8" Padding="14" Margin="0,0,0,12"
                 Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
             <StackPanel>
                 <TextBlock Text="Trust" FontSize="15" FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
                 <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,8"
-                           Text="One dial sets how sensitively Foreman interprets this harness, how much it notifies, and how hard it auto-responds. 3 is today's defaults. Applies immediately — no restart." />
-                <Slider x:Name="TrustSlider" Minimum="1" Maximum="5" TickFrequency="1"
-                        IsSnapToTickEnabled="True" TickPlacement="BottomRight"
-                        ValueChanged="TrustSlider_ValueChanged" />
-                <Grid Margin="0,2,0,0">
-                    <TextBlock Text="1 Locked-down" Style="{StaticResource Muted}" HorizontalAlignment="Left" />
-                    <TextBlock Text="5 Hands-off" Style="{StaticResource Muted}" HorizontalAlignment="Right" />
-                </Grid>
+                           Text="Choose this harness's Trust level. It controls behaviour sensitivity, responses and the browser, desktop and ADB capability profile inherited below. Changes apply immediately." />
+                <ComboBox x:Name="TrustLevelCombo" MinWidth="260" HorizontalAlignment="Left"
+                          SelectionChanged="TrustLevelCombo_SelectionChanged" />
                 <TextBlock x:Name="TrustSummary" Margin="0,8,0,0" TextWrapping="Wrap" FontSize="12"
                            Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
+                <Separator Margin="0,14,0,12" Background="{StaticResource BorderBrush}" />
+                <Button Content="Universal Trust Settings…" Click="UniversalTrustSettingsClick"
+                        HorizontalAlignment="Left" ToolTip="Edit the observation and control privileges inherited by Trust levels 1–5" />
             </StackPanel>
         </Border>
 
@@ -83,10 +81,10 @@
         <Border Grid.Row="3" CornerRadius="8" Padding="14" Margin="0,12,0,0"
                 Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
             <StackPanel>
-                <TextBlock Text="Harness MCP policy" FontSize="15" FontWeight="SemiBold"
+                <TextBlock Text="Per-harness capability ceiling" FontSize="15" FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
                 <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,8"
-                           Text="What this harness is allowed to request over MCP. Browser use is enforced by Foreman's broker/extension path. Desktop computer use is not available to ordinary harness MCP calls yet, so that policy is advisory until a dedicated driver exists." />
+                           Text="Optional restrictions on top of the selected universal Trust profile. Use profile inherits it; Always ask requires approval; Never removes access. These settings can only make this harness more restricted." />
 
                 <Grid>
                     <Grid.RowDefinitions>
@@ -98,10 +96,10 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Computer use policy" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Desktop + ADB ceiling" VerticalAlignment="Center"
                                Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
                     <ComboBox x:Name="ComputerUseCombo" Grid.Row="0" Grid.Column="1" MinWidth="180" Margin="0,0,0,8" />
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Browser use policy" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Browser ceiling" VerticalAlignment="Center"
                                Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
                     <ComboBox x:Name="BrowserUseCombo" Grid.Row="1" Grid.Column="1" MinWidth="180" />
                 </Grid>
@@ -109,15 +107,15 @@
                 <Separator Margin="0,16,0,14" Background="{StaticResource BorderBrush}" />
 
                 <StackPanel x:Name="CuDriverPanel">
-                    <TextBlock Text="Foreman shared computer-use drivers" FontSize="15" FontWeight="SemiBold"
+                    <TextBlock Text="TraceBrake shared computer-use drivers" FontSize="15" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}" FontFamily="Segoe UI, Arial" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,4,0,8"
-                               Text="Who may submit Foreman-mediated browser and Android/ADB (cu_*) actions through the unified plugin. This is global routing, separate from the harness policies above. Browser actions use Browser use policy; Android uses Computer use policy. Actions remain audited, approval-gated when risky, and panic-haltable." />
+                               Text="Who may submit TraceBrake-mediated browser and Android/ADB (cu_*) actions through the unified plugin. This is global routing, separate from the harness policies above. Browser actions use Browser use policy; Android uses Computer use policy. Actions remain audited, approval-gated when risky, and panic-haltable." />
                     <ComboBox x:Name="ForemanDriverCombo" MinWidth="260">
-                        <ComboBoxItem Tag="unchanged" Content="Leave Foreman's driver set unchanged" />
-                        <ComboBoxItem Tag="include" Content="Add this harness to Foreman's shared driver set" />
-                        <ComboBoxItem Tag="remove" Content="Remove this harness from Foreman's shared driver set" />
-                        <ComboBoxItem Tag="only" Content="Make this harness Foreman's only driver" />
+                        <ComboBoxItem Tag="unchanged" Content="Leave TraceBrake's driver set unchanged" />
+                        <ComboBoxItem Tag="include" Content="Add this harness to TraceBrake's shared driver set" />
+                        <ComboBoxItem Tag="remove" Content="Remove this harness from TraceBrake's shared driver set" />
+                        <ComboBoxItem Tag="only" Content="Make this harness TraceBrake's only driver" />
                         <ComboBoxItem Tag="any" Content="Allow any harness to drive browser and Android use" />
                         <ComboBoxItem Tag="operator" Content="Operator only — no harness driver" />
                     </ComboBox>

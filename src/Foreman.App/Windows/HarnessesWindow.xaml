@@ -44,7 +44,7 @@
             <TextBlock Text="HARNESS MONITORING" FontSize="12" FontWeight="Bold"
                        Foreground="{StaticResource AccentBrush}" />
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextMutedBrush}" FontSize="11" Margin="0,4,0,0"
-                       Text="Uncheck any harness to stop monitoring it. Add custom executables below — Foreman Agent Safety will treat them the same as built-in harnesses." />
+                       Text="Uncheck any harness to stop monitoring it. Add custom executables below — TraceBrake will treat them the same as built-in harnesses." />
         </StackPanel>
 
         <!-- Column headers -->
@@ -162,7 +162,7 @@
         <!-- Connect agent / Save / Cancel -->
         <Grid Grid.Row="8">
             <Button Content="Connect agent…" Click="ConnectAgentClick" HorizontalAlignment="Left"
-                    ToolTip="Hook an agent up to Foreman Agent Safety's MCP server (one-click for Claude Code and Codex)" />
+                    ToolTip="Hook an agent up to TraceBrake's MCP server (one-click for Claude Code and Codex)" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Revert" Click="CancelClick" Margin="0,0,8,0" />
                 <Button Content="Save" Click="SaveClick"

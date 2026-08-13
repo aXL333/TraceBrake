@@ -1,7 +1,7 @@
 namespace Foreman.Core.Models;
 
 /// <summary>
-/// An agent's self-reported context/token budget. Foreman can't observe a model's context window from the
+/// An agent's self-reported context/token budget. TraceBrake can't observe a model's context window from the
 /// outside, so the harness reports it via the <c>report_usage</c> MCP tool. Every field is optional — a harness
 /// reports whatever it knows (a percentage, or used/budget tokens, or just a note).
 /// </summary>

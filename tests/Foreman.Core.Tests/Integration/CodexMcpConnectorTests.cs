@@ -53,7 +53,7 @@ public sealed class CodexMcpConnectorTests : IDisposable
         Assert.Contains(_envSets, kv => kv.Key == CodexMcpConnector.BearerTokenEnvVar && kv.Value == "TOKEN123");
 
         var agents = File.ReadAllText(_agents);
-        Assert.Contains("Foreman Agent Safety MCP Monitor", agents);
+        Assert.Contains("TraceBrake MCP Monitor", agents);
         Assert.Contains("list_ask_harness_requests(harnessId: \"codex\")", agents);
         Assert.Contains("reply_to_ask_harness_request(requestId, response, actionTaken, harnessId: \"codex\")", agents);
     }

@@ -8,7 +8,7 @@ namespace Foreman.Guardian;
 
 /// <summary>
 /// Resolves the image path of the process on the other end of a named-pipe connection, so the guardian can
-/// Authenticode-verify its caller (only the real, same-publisher Foreman may request a seal). Best-effort: any
+/// Authenticode-verify its caller (only the real, same-publisher TraceBrake may request a seal). Best-effort: any
 /// failure returns null, which the caller treats as "can't confirm" (rejected on signed builds, allowed on dev).
 /// </summary>
 [SupportedOSPlatform("windows")]

@@ -35,7 +35,7 @@ public static class ModalityCatalog
             "In 8 short lines or fewer, report what you've done this session: tasks, files changed, commands run. " +
             "Plain list, no prose padding."),
         new("self-check", "Self-check vs Foreman", ModalityKind.SelfCheck, ModalityAudience.Agent,
-            "Ask Foreman what it sees about you (get_behavior_metrics, get_my_permissions, list_recent_events). " +
+            "Ask TraceBrake what it sees about you (get_behavior_metrics, get_my_permissions, list_recent_events). " +
             "If nothing is flagged, reply exactly 'clean'. If something is flagged, fix your own mess and explain " +
             "it in one short line per item. Don't pad."),
         new("triage", "Alert triage", ModalityKind.Triage, ModalityAudience.Internal,

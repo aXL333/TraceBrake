@@ -1,13 +1,25 @@
 {
   "manifest_version": 3,
-  "name": "Foreman Agent Safety",
+  "name": "TraceBrake",
   "version": "0.3.0",
-  "description": "On-device, verified link to your local Foreman Agent Safety watchdog, and the executor for Foreman's audited browser use. Nothing leaves your machine.",
+  "description": "On-device, verified link to your local TraceBrake watchdog, and the executor for TraceBrake's audited browser use. Nothing leaves your machine.",
   "permissions": ["sidePanel", "storage", "tabs", "tabGroups", "alarms", "scripting"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "side_panel": { "default_path": "sidepanel.html" },
   "options_page": "options.html",
-  "action": { "default_title": "Open Foreman Agent Safety" }
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Open TraceBrake",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  }
 }

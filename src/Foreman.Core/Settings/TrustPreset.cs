@@ -3,7 +3,7 @@ using Foreman.Core.Alerts;
 namespace Foreman.Core.Settings;
 
 /// <summary>
-/// Maps a per-harness Trust level (1=locked-down … 5=hands-off) onto Foreman's existing knobs, so one slider
+/// Maps a per-harness Trust level (1=locked-down … 5=hands-off) onto TraceBrake's existing knobs, so one slider
 /// drives behavior coherently. Trust 3 is the neutral level (== today's global defaults), lower fires sooner /
 /// responds harder, higher is more permissive.
 ///

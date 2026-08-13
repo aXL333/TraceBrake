@@ -37,7 +37,7 @@ public sealed class HangDetector
     // cooldown (HangRealertCooldownMinutes) rate-limits re-alerts per process so they can't breed.
     private readonly ConcurrentDictionary<(int Pid, long StartTicks), DateTimeOffset> _lastAlertAt = new();
 
-    // Processes that legitimately sit idle or are part of Foreman's own monitoring stack.
+    // Processes that legitimately sit idle or are part of TraceBrake's own monitoring stack.
     // A no-I/O alert on these is noise rather than an actionable stalled harness child.
     private static readonly HashSet<string> _ignoredHangProcessNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -46,6 +46,7 @@ public sealed class HangDetector
         "Foreman.App.exe",
         "Foreman",
         "Foreman.exe",
+        "TraceBrake.exe",
     };
 
     public HangDetector(EventBus bus, ForemanSettings settings, ProcessTreeTracker tree,

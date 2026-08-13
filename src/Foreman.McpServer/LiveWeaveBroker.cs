@@ -31,7 +31,7 @@ public sealed class LiveWeavePresence
 }
 
 /// <summary>
-/// Command queue between Foreman MCP (agents) and the LiveWeave Chrome extension.
+/// Command queue between TraceBrake MCP (agents) and the LiveWeave Chrome extension.
 /// Agents enqueue; the extension polls and completes.
 /// </summary>
 public sealed class LiveWeaveBroker
@@ -283,7 +283,7 @@ public sealed class LiveWeaveBroker
                     ? (driverMode == "operator_only"
                         ? "LiveWeave extension is linked, but no harness driver is selected. Operator token only."
                         : "LiveWeave extension is linked. The selected driver may use liveweave_command.")
-                    : "LiveWeave extension not connected — open LiveWeave in Chrome and pair with Foreman (Connect agent → Pair browser extension, choose LiveWeave harness).",
+                    : "LiveWeave extension not connected — open LiveWeave in Chrome and pair with TraceBrake (Connect agent → Pair browser extension, choose LiveWeave harness).",
             };
         }
     }

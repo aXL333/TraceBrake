@@ -4,11 +4,11 @@ using System.Text.Json.Nodes;
 namespace Foreman.Core.Integration;
 
 /// <summary>
-/// One-click "connect Gemini CLI to Foreman Agent Safety": writes a <c>foreman</c> entry into Gemini CLI's
+/// One-click "connect Gemini CLI to TraceBrake": writes a <c>foreman</c> entry into Gemini CLI's
 /// global <c>~/.gemini/settings.json</c> under <c>mcpServers</c> as a streamable-HTTP server.
 ///
 /// IMPORTANT: Gemini CLI distinguishes transports by field name — <c>httpUrl</c> is streamable HTTP, while
-/// <c>url</c> is SSE. Foreman serves streamable HTTP, so the entry uses <c>httpUrl</c> (NOT <c>url</c>) plus a
+/// <c>url</c> is SSE. TraceBrake serves streamable HTTP, so the entry uses <c>httpUrl</c> (NOT <c>url</c>) plus a
 /// <c>headers</c> object carrying the <c>Authorization: Bearer</c> token.
 ///
 /// settings.json is the user's MAIN config, so the whole file is parsed and rewritten via <see cref="JsonNode"/>

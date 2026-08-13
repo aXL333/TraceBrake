@@ -20,7 +20,7 @@ The pitch a normie understands: **"Your agent talks to Foreman, Foreman talks to
    └───────────────────────┘              │  - tamper-evident log (P1)│          └───────────────┘
               ▲                            └────────────┬─────────────┘
               │ verifies ext hash @ pair                │ anchors log-head hash (commitment only)
-              └──────────── signed Foreman.exe          ▼
+              └──────────── signed TraceBrake.exe          ▼
                                               public transparency log  ── anyone can audit integrity
 ```
 
@@ -77,7 +77,7 @@ Every extension↔Foreman and harness↔Foreman connection completes a **mandato
 This is how the loop earns *universal* trust without leaking anything:
 
 - **The log:** periodically anchor the tamper-evident event-log head hash (P1) to a **public append-only / transparency log**. Anyone can verify the log wasn't rewritten; the log's *contents* never leave the machine.
-- **The extension:** every release is **signed (SignPath, the same identity as `Foreman.exe`)**, and its `version → hash → signature` is published to that public log. The **OS-verified `Foreman.exe` checks the running extension's hash against the published signed manifest at pairing** and refuses to pair on mismatch. (The extension can't trustably verify itself — that's circular — so the *signed desktop app* is the trust root.) Result: not "immutable code," but **every version is publicly accountable and the signed app won't talk to an unattested extension.**
+- **The extension:** every release is **signed (SignPath, the same identity as `TraceBrake.exe`)**, and its `version → hash → signature` is published to that public log. The **OS-verified `TraceBrake.exe` checks the running extension's hash against the published signed manifest at pairing** and refuses to pair on mismatch. (The extension can't trustably verify itself — that's circular — so the *signed desktop app* is the trust root.) Result: not "immutable code," but **every version is publicly accountable and the signed app won't talk to an unattested extension.**
 
 ---
 
@@ -111,7 +111,7 @@ This is how the loop earns *universal* trust without leaking anything:
 1. **Server foundations** (in-repo, unit-testable): Origin/Host validation on `:54321`, the generalised challenge/response, and a pairing-code endpoint. *Prerequisite — and what makes the extension securable.*
 2. **MCP delivery + modalities**: `HarnessSystemPrompts` + modality set + `get_my_instructions`; the tiered-inference dispatcher with validate-or-escalate.
 3. **The MV3 extension** (new `extension/` sub-project, modeled on djc-chrome-link): side panel, MCP-over-HTTP client, Nano integration, pairing UX, the `🔒 On-device · verified` badge.
-4. **Attestation**: SignPath-sign the extension, publish the signed release manifest, have `Foreman.exe` verify the extension hash at pairing; anchor the P1 log head publicly.
+4. **Attestation**: SignPath-sign the extension, publish the signed release manifest, have `TraceBrake.exe` verify the extension hash at pairing; anchor the P1 log head publicly.
 5. **Lock wiring (P3)**: gate the system-prompt edit (and the other weakening actions) behind the hardware unlock; sign protected settings so out-of-band edits are detected.
 
 Dependencies: 1 → 3; 2 is independent; 4 needs SignPath (#41) live; 5 is P3 (#55).

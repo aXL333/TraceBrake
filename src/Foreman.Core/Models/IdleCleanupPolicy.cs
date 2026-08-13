@@ -2,7 +2,7 @@ namespace Foreman.Core.Models;
 
 /// <summary>
 /// Pure decision logic for "Idle Harness self-cleanup": when a harness process tree looks
-/// abandoned, Foreman asks the harness over MCP to pack up cleanly (checkpoint work, stop
+/// abandoned, TraceBrake asks the harness over MCP to pack up cleanly (checkpoint work, stop
 /// leftover children, release resources) instead of silently burning CPU/tokens. The
 /// orchestration (timer, mailbox, MCP push) lives in Foreman.Monitor/App; everything here
 /// is side-effect-free and unit-testable.
@@ -69,12 +69,12 @@ public static class IdleCleanupPolicy
         string harnessId, int idleMinutes, IReadOnlyList<string> childNames, bool manual)
     {
         var system =
-            $"You are the '{harnessId}' coding agent. Foreman Agent Safety, the local watchdog on this machine, " +
+            $"You are the '{harnessId}' coding agent. TraceBrake, the local watchdog on this machine, " +
             "is asking you to wrap up an apparently idle session. This is routine housekeeping, not an accusation — " +
             "if you are mid-task or waiting on the user, just say so.";
 
         var trigger = manual
-            ? "The operator asked Foreman to request a session cleanup from you."
+            ? "The operator asked TraceBrake to request a session cleanup from you."
             : $"Your process tree has shown no I/O activity for about {idleMinutes} minute(s) and looks abandoned.";
 
         var children = childNames.Count > 0
@@ -89,7 +89,7 @@ public static class IdleCleanupPolicy
             "3. Release file locks and clean up temp resources you own.\n" +
             $"4. Reply via reply_to_ask_harness_request(requestId, response, actionTaken, harnessId: \"{harnessId}\") " +
             "— the requestId is shown by list_ask_harness_requests.\n" +
-            "5. If this session is still needed (mid-task, waiting for the user), reply saying so and Foreman will leave you alone.";
+            "5. If this session is still needed (mid-task, waiting for the user), reply saying so and TraceBrake will leave you alone.";
 
         return (system, user);
     }
@@ -120,7 +120,7 @@ public static class IdleCleanupPolicy
     public static (string System, string User) BuildUpdatePrepPrompts(string harnessId, IReadOnlyList<string> childNames)
     {
         var system =
-            $"You are the '{harnessId}' coding agent. Foreman Agent Safety, the local watchdog on this machine, is " +
+            $"You are the '{harnessId}' coding agent. TraceBrake, the local watchdog on this machine, is " +
             "preparing for an imminent update or restart that may interrupt you. This is routine — checkpoint so nothing is lost.";
 
         var children = childNames.Count > 0

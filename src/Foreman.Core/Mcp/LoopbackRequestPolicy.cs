@@ -10,7 +10,7 @@ public sealed record RequestVerdict(bool Allowed, string Reason)
 }
 
 /// <summary>
-/// Pure transport-layer gate for Foreman's loopback MCP server, evaluated BEFORE the bearer-token check.
+/// Pure transport-layer gate for TraceBrake's loopback MCP server, evaluated BEFORE the bearer-token check.
 /// Defends the local endpoint against the browser-reachable attacks the whitepaper describes:
 ///
 ///  - <b>Host header must be loopback.</b> The canonical DNS-rebinding defence: a malicious public page can

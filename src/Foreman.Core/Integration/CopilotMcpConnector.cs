@@ -4,10 +4,10 @@ using System.Text.Json.Nodes;
 namespace Foreman.Core.Integration;
 
 /// <summary>
-/// One-click "connect GitHub Copilot CLI to Foreman Agent Safety": writes a <c>foreman</c> entry into
+/// One-click "connect GitHub Copilot CLI to TraceBrake": writes a <c>foreman</c> entry into
 /// Copilot CLI's global <c>~/.copilot/mcp-config.json</c> under <c>mcpServers</c> as a remote HTTP server
 /// (<c>type: "http"</c> + <c>url</c> + an <c>Authorization: Bearer</c> header, with <c>tools: ["*"]</c> so
-/// every Foreman tool is available).
+/// every TraceBrake tool is available).
 ///
 /// The file is parsed and rewritten via <see cref="JsonNode"/> so every other server is preserved, the
 /// original is backed up first, and the swap is atomic (temp + replace). Path/format were confirmed against

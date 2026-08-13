@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Foreman.Core.Security;
 
 /// <summary>
-/// Structured lease used by the elevated sidecar to remember that Foreman enabled the machine-wide File System
+/// Structured lease used by the elevated sidecar to remember that TraceBrake enabled the machine-wide File System
 /// audit subcategory. File authorship is enforced by the sidecar's administrator/SYSTEM-only ACL; this type keeps
 /// the payload versioned and rejects malformed, future-dated, or stale ownership claims.
 /// </summary>

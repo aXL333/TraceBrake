@@ -85,7 +85,7 @@ public partial class HarnessDetailWindow : Window
         AddBadge($"Trust {trust}", Color.FromRgb(0x2A, 0x24, 0x10), Color.FromRgb(0xF0, 0xB8, 0x4A));
         var (escBg, escFg) = EscalationColors(level);
         AddBadge($"Escalation: {level.ToString().ToUpperInvariant()}", escBg, escFg);
-        // configured-but-not-connected (and running) → "Ready" (amber): links on first Foreman tool call, not a dead-end "No MCP".
+        // configured-but-not-connected (and running) → "Ready" (amber): links on first TraceBrake tool call, not a dead-end "No MCP".
         var configured = !mcpConnected && running && (_ctx.IsConfigured?.Invoke() ?? false);
         var (mcpText, mcpBg, mcpFg) = mcpConnected
             ? ("MCP linked", Color.FromRgb(0x12, 0x2A, 0x1C), Color.FromRgb(0x6E, 0xC8, 0x8E))
@@ -422,7 +422,7 @@ public sealed class HarnessDetailContext
     public required Action OpenSettings { get; init; }
     public required Action OpenConnectAgent { get; init; }
 
-    /// <summary>Whether this harness's config already points at Foreman (so a not-connected running agent just needs a restart).</summary>
+    /// <summary>Whether this harness's config already points at TraceBrake (so a not-connected running agent just needs a restart).</summary>
     public Func<bool>? IsConfigured { get; init; }
 
     // ── On-click operations (optional; null = button reports "not available") ──

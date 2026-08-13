@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Foreman.Core.Profiles;
 
 /// <summary>
-/// Loads and watches harness profiles from %LocalAppData%\Foreman\profiles\.
+/// Loads and watches harness profiles from %LocalAppData%\TraceBrake\profiles\.
 /// Also ships a built-in default profile as a fallback.
 /// </summary>
 public sealed class ProfileStore : IDisposable

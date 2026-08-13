@@ -59,7 +59,7 @@ public sealed class GuardianAuthority : IDisposable
     /// <summary>
     /// Seals the settings security projection with the SYSTEM-held secret, tagged with the guardian scheme so the
     /// app/local path recognise it. Step 7: the secret never leaves the SYSTEM boundary, so the agent can't forge
-    /// a weakened-settings seal. (Client auth already ensures only the genuine Foreman can call this.)
+    /// a weakened-settings seal. (Client auth already ensures only the genuine TraceBrake can call this.)
     /// </summary>
     public string SealSettings(string projection) =>
         SettingsSeal.GuardianScheme + SettingsSeal.ComputeMac(projection, _settingsSecret());

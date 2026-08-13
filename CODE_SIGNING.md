@@ -1,12 +1,12 @@
 # Code Signing
 
-This document describes how Foreman Agent Safety release binaries are (or will be) code-signed, and how
+This document describes how TraceBrake release binaries are (or will be) code-signed, and how
 you can verify a download. It exists both for transparency to users and as a reference for the
 [SignPath Foundation](https://signpath.org/) open-source signing program.
 
 ## Current status
 
-Foreman Agent Safety is in **alpha**. Until code signing is approved and live, release artifacts are
+TraceBrake is in **alpha**. Until code signing is approved and live, release artifacts are
 shipped **unsigned**, accompanied by **SHA-256 checksums** (`checksums-sha256.txt`) so you can verify
 integrity. Release notes state clearly whether a given build is signed.
 
@@ -27,10 +27,10 @@ for qualifying open-source projects. Key properties of this model:
 
 Signing is nested so the installer ships already-signed binaries:
 
-1. Every executable in the app payload is signed first: **`Foreman.exe`**,
+1. Every executable in the app payload is signed first: **`TraceBrake.exe`**,
    **`sidecar/Foreman.EtwSidecar.exe`**, **`guardian/Foreman.Guardian.exe`**,
    **`cu-sidecar/Foreman.CuSidecar.exe`**, and **`cu-pilot/Foreman.CuPilot.exe`**.
-2. The **Inno Setup installer** (`Foreman-Agent-Safety-Setup-*.exe`) is built from those signed binaries and
+2. The **Inno Setup installer** (`TraceBrake-Setup-*.exe`) is built from those signed binaries and
    then signed last.
 3. SHA-256 checksums are generated over the final, signed installer.
 
@@ -38,7 +38,7 @@ All signatures are **timestamped**, so they remain valid after the (short-lived)
 
 The optional Guardian uses the same verified Authenticode identity as its long-lived client policy. A signed
 installation pins the publisher, so later releases signed by that publisher continue to work without a binary hash
-re-pin. Unsigned development installations instead pin the exact Foreman.exe path and SHA-256 and are explicitly
+re-pin. Unsigned development installations instead pin the exact TraceBrake.exe path and SHA-256 and are explicitly
 reported as development-only protection; re-enabling the Guardian after signing upgrades that policy.
 
 ## Attribution
@@ -55,7 +55,7 @@ This attribution appears in the release notes and the application's About inform
 **Checksum (always available):**
 
 ```powershell
-Get-FileHash .\Foreman-Agent-Safety-Setup-<version>.exe -Algorithm SHA256
+Get-FileHash .\TraceBrake-Setup-<version>.exe -Algorithm SHA256
 # compare against checksums-sha256.txt attached to the release
 ```
 
@@ -63,7 +63,7 @@ Get-FileHash .\Foreman-Agent-Safety-Setup-<version>.exe -Algorithm SHA256
 or:
 
 ```powershell
-Get-AuthenticodeSignature .\Foreman-Agent-Safety-Setup-<version>.exe | Format-List
+Get-AuthenticodeSignature .\TraceBrake-Setup-<version>.exe | Format-List
 # Expect: Status = Valid, signed by "SignPath Foundation"
 ```
 

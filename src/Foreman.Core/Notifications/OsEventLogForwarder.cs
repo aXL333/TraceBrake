@@ -38,7 +38,7 @@ public sealed class OsEventLogForwarder : IEventSink
 
     /// <summary>
     /// The OS-log mirror set — deliberately its OWN policy, NOT <see cref="AuditPolicy"/> (that decides peer-LLM
-    /// audit routing and excludes Foreman's own monitoring notices). For the blackbox handoff we keep the log
+    /// audit routing and excludes TraceBrake's own monitoring notices). For the blackbox handoff we keep the log
     /// high-signal — no routine hang/orphan/non-zero-exit/info — but we DO want serious monitoring-health notices
     /// (WMI watcher degraded, MCP server down) recorded externally. So: security-in-kind events always, escalations
     /// once Alarm+, monitoring notices and everything else only at High+.

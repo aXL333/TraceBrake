@@ -110,9 +110,9 @@
                     <StackPanel Margin="4,16,24,24" MaxWidth="680">
                         <TextBlock Text="STARTUP" Style="{StaticResource SectionHeaderStyle}" />
                         <CheckBox x:Name="StartWithWindowsCheck"
-                                  Content="Start Foreman when Windows signs in" />
+                                  Content="Start TraceBrake when Windows signs in" />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Creates a per-user HKCU Run entry. No admin rights; Foreman starts in the tray before your first agent session." />
+                            Text="Uses the per-user Windows startup entry, with a Startup-folder fallback when endpoint protection blocks the Run key. No admin rights; TraceBrake starts in the tray before your first agent session." />
 
                         <Separator Style="{StaticResource SectionGapStyle}" />
 
@@ -122,7 +122,7 @@
                             <TextBox x:Name="McpPortBox" Width="90" />
                         </StackPanel>
                         <TextBlock Style="{StaticResource BodyTextStyle}" Margin="0,0,0,0"
-                                   Text="The local MCP endpoint listens on localhost only. Port changes take effect after a Foreman restart." />
+                                   Text="The local MCP endpoint listens on localhost only. Port changes take effect after a TraceBrake restart." />
 
                         <Separator Style="{StaticResource SectionGapStyle}" />
 
@@ -130,7 +130,7 @@
                         <CheckBox x:Name="GameModeCheck"
                                   Content="Pause popups while a fullscreen game or presentation is active" />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Detection, logging, and escalation continue silently. Foreman shows a digest of held notifications after the fullscreen app exits." />
+                                   Text="Detection, logging, and escalation continue silently. TraceBrake shows a digest of held notifications after the fullscreen app exits." />
                         <CheckBox x:Name="GameModeBreakThroughCheck"
                                   Content="Let Critical alerts break through game mode"
                                   Margin="24,0,0,0"
@@ -171,7 +171,7 @@
                         <CheckBox x:Name="IdleCleanupCheck"
                                   Content="Ask idle harnesses to clean up after themselves" />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Foreman sends a polite MCP request to checkpoint, stop leftover child processes, and reply or exit. It never kills anything automatically." />
+                                   Text="TraceBrake sends a polite MCP request to checkpoint, stop leftover child processes, and reply or exit. It never kills anything automatically." />
                         <StackPanel Style="{StaticResource FieldRowStyle}" Margin="24,0,0,8">
                             <Label Content="Consider idle after (min):" Width="196" VerticalAlignment="Center" />
                             <TextBox x:Name="IdleCleanupAfterBox" Width="70" />
@@ -187,7 +187,7 @@
                         <CheckBox x:Name="ScanMcpToolsCheck"
                                   Content="Scan HTTP/SSE MCP tool descriptions for injection wording" />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Opt-in network probe. Foreman periodically lists tools from configured HTTP/SSE MCP servers and flags descriptions that look like prompt injection or data exfiltration. Stdio servers are never launched." />
+                                   Text="Opt-in network probe. TraceBrake periodically lists tools from configured HTTP/SSE MCP servers and flags descriptions that look like prompt injection or data exfiltration. Stdio servers are never launched." />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -219,9 +219,9 @@
                         <CheckBox x:Name="OsEventLogCheck"
                                   Content="Mirror lifecycle and security-significant events to Windows Event Log" />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Writes start, stop, crash, and security-significant records to Windows Logs > Application under source 'Foreman Agent Safety'. Secrets are redacted." />
+                                   Text="Writes start, stop, crash, and security-significant records to Windows Logs > Application under the legacy-compatible source 'Foreman Agent Safety'. Secrets are redacted." />
                         <CheckBox x:Name="PersistLogCheck"
-                                  Content="Keep Foreman's local event log across restarts" />
+                                  Content="Keep TraceBrake's local event log across restarts" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -231,7 +231,7 @@
                     <StackPanel Margin="4,16,24,24" MaxWidth="720">
                         <TextBlock Text="PRESENCE LOCK" Style="{StaticResource SectionHeaderStyle}" />
                         <TextBlock Style="{StaticResource BodyTextStyle}" Margin="0,0,0,8"
-                                   Text="Require a Windows Hello or security-key tap before Foreman allows weakening actions: lowering trust, disabling read-auditing, disabling persistent logs, muting protected alerts, or disabling a harness." />
+                                   Text="Require a Windows Hello or security-key tap before TraceBrake allows weakening actions: lowering trust, disabling read-auditing, disabling persistent logs, muting protected alerts, or disabling a harness." />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <Button x:Name="PresenceLockButton" Content="Enable presence lock..." Click="PresenceLockClick" Padding="12,6" />
                             <TextBlock x:Name="PresenceLockStatus" VerticalAlignment="Center" Margin="12,0,0,0"
@@ -246,7 +246,7 @@
 
                         <TextBlock Text="HARDENED GUARDIAN" Style="{StaticResource SectionHeaderStyle}" />
                         <TextBlock Style="{StaticResource BodyTextStyle}" Margin="0,0,0,8"
-                                   Text="Optional LocalSystem service that holds Foreman's tamper-seal key outside your user session. This makes audit-log seal forgery much harder for same-user agents. One UAC prompt; restart Foreman to activate." />
+                                   Text="Optional LocalSystem service that holds TraceBrake's tamper-seal key outside your user session. This makes audit-log seal forgery much harder for same-user agents. One UAC prompt; restart TraceBrake to activate." />
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="GuardianButton" Content="Enable hardened guardian..." Click="HardenedGuardianClick" Padding="12,6" />
                             <TextBlock x:Name="GuardianStatus" VerticalAlignment="Center" Margin="12,0,0,0"
@@ -292,9 +292,9 @@
                     <StackPanel Margin="4,16,24,24" MaxWidth="720">
                         <TextBlock Text="ANDROID / ADB BRIDGE" Style="{StaticResource SectionHeaderStyle}" />
                         <CheckBox x:Name="AdbEnabledCheck"
-                                  Content="Enable Foreman's mediated Android device bridge" />
+                                  Content="Enable TraceBrake's mediated Android device bridge" />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Off by default. Foreman exposes only bounded devices, screenshot, UI dump, logcat, tap, type, swipe and key actions through the audited cu_* broker—never raw adb shell. A restart is required." />
+                                   Text="Off by default. TraceBrake exposes only bounded devices, screenshot, UI dump, logcat, APK install, tap, type, swipe and key actions through the audited cu_* broker—never raw adb shell. Changes apply immediately after a successful save." />
 
                         <TextBlock Text="ADB executable" Style="{StaticResource BodyTextStyle}" Margin="0,12,0,4" />
                         <Grid>
@@ -307,13 +307,13 @@
                             <Button Grid.Column="1" Content="Browse..." Click="BrowseAdbClick" Margin="8,0,0,0" />
                         </Grid>
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Use the absolute platform-tools path. Foreman does not search PATH, which prevents an agent-controlled PATH entry from substituting another executable." />
+                                   Text="Use the absolute platform-tools path. TraceBrake does not search PATH, which prevents an agent-controlled PATH entry from substituting another executable." />
 
                         <TextBlock Text="Enrolled device serials" Style="{StaticResource BodyTextStyle}" Margin="0,12,0,4" />
                         <TextBox x:Name="AdbDevicesBox" MinWidth="420" Padding="7,5"
                                  ToolTip="Comma-separated serials from adb devices -l. Empty permits inventory only." />
                         <TextBlock Style="{StaticResource HelpTextStyle}"
-                                   Text="Comma-separated. Device-scoped actions fail closed unless the exact serial is enrolled. With one enrolled device, harnesses may omit serial and Foreman stamps it into the audited action." />
+                                   Text="Comma-separated. Device-scoped actions fail closed unless the exact serial is enrolled. With one enrolled device, harnesses may omit serial and TraceBrake stamps it into the audited action." />
 
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <Button Content="Test and list devices" Click="ProbeAdbClick" Padding="12,6" />
@@ -325,7 +325,7 @@
 
                         <TextBlock Text="AUTHORISATION" Style="{StaticResource SectionHeaderStyle}" />
                         <TextBlock Style="{StaticResource BodyTextStyle}"
-                                   Text="Enabling the bridge, changing its executable, or adding a device requires a fresh presence verification. Harnesses then use the same shared driver set configured under Harness settings: every selected harness can submit Android actions through the unified Foreman MCP plugin, subject to its Computer use policy. State-changing actions are always held for operator approval; inventory and captures still pass through the auditor and panic stop." />
+                                   Text="Enabling the bridge, changing its executable, or adding a device requires a fresh presence verification. Harnesses then use the same shared driver set configured under Harness settings: every selected harness can submit Android actions, including APK installs, through the unified TraceBrake MCP plugin, subject to its Computer use policy. State-changing actions are always held for operator approval; inventory and captures still pass through the auditor and panic stop." />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -382,7 +382,7 @@
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="AUTOMATIC RESPONSES" Style="{StaticResource SectionHeaderStyle}" />
                             <TextBlock Style="{StaticResource BodyTextStyle}" Margin="0,0,0,12"
-                                       Text="Foreman can take these non-destructive actions when a harness reaches a tier. Auto-kill and auto-mute stay manual." />
+                                       Text="TraceBrake can take these non-destructive actions when a harness reaches a tier. Auto-kill and auto-mute stay manual." />
 
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
@@ -457,7 +457,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
                     <TextBlock Style="{StaticResource BodyTextStyle}"
-                               Text="Some changes, such as port and guardian activation, require a Foreman restart." />
+                               Text="Some changes, such as port and guardian activation, require a TraceBrake restart." />
                     <TextBlock x:Name="SavedStatus" Foreground="{StaticResource AccentBrush}" FontSize="12" Margin="0,2,0,0" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">

@@ -7,7 +7,7 @@ using Microsoft.Win32.SafeHandles;
 namespace Foreman.App;
 
 /// <summary>
-/// Detects launch-context filesystem redirection of Foreman's data directory (the split-brain canary — see
+/// Detects launch-context filesystem redirection of TraceBrake's data directory (the split-brain canary — see
 /// <see cref="DataDirRedirection"/> for why this matters). Opens a throwaway probe file in the data dir and
 /// asks the kernel for the handle's FINAL path: a sandbox/container overlay can virtualize the path Foreman
 /// asks for, but it cannot lie about where the handle actually landed. Best-effort — any failure returns

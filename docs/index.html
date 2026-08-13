@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b10">
+  <meta name="description" content="TraceBrake is the human-controlled safety broker and black box for AI agents on Windows.">
+  <meta property="og:title" content="TraceBrake — Agent safety for Windows">
+  <meta property="og:description" content="See every agent. Gate every action. Keep the human in control.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tracebrake.com/">
+  <meta property="og:image" content="assets/foreman-social-preview.png">
+  <title>TraceBrake — Agent safety for Windows</title>
+  <link rel="canonical" href="https://tracebrake.com/">
+  <script>document.documentElement.classList.add('js')</script>
+  <link rel="stylesheet" href="tracebrake.css">
+  <script src="tracebrake.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="launch-note" role="note">
+    <span class="launch-note__pulse" aria-hidden="true"></span>
+    <span><strong>TraceBrake is here.</strong> Foreman Agent Safety has a new name; the project, safety model and open-source history continue.</span>
+  </div>
+
+  <header class="site-header" data-header>
+    <a class="brand" href="#top" aria-label="TraceBrake home">
+      <span class="brand__mark" aria-hidden="true"><i></i></span>
+      <span class="brand__name">TRACE<span>BRAKE</span></span>
+    </a>
+
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a href="#why">Why</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="#control-loop">Control loop</a>
+      <a href="#open-source">Open source</a>
+    </nav>
+
+    <a class="button button--small button--quiet" href="https://github.com/aXL333/Foreman">
+      Current build <span aria-hidden="true">↗</span>
+    </a>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="hero__ambient" aria-hidden="true"></div>
+      <div class="hero__copy reveal">
+        <p class="eyebrow"><span>Local-first</span> Agent safety for Windows</p>
+        <h1>Every agent gets power.<br><em>Give it brakes.</em></h1>
+        <p class="hero__lede">
+          TraceBrake is the human-controlled safety broker and black box for AI agents.
+          It watches behaviour, records what matters and puts a deliberate control point
+          between autonomous software and sensitive actions.
+        </p>
+        <div class="hero__actions">
+          <a class="button button--primary" href="#control-loop">See the control loop <span aria-hidden="true">↓</span></a>
+          <a class="button button--quiet" href="https://youtu.be/Ho2ud-5sNsU">Watch the original Foreman demo <span aria-hidden="true">▶</span></a>
+        </div>
+        <ul class="hero__facts" aria-label="Project facts">
+          <li><span class="status-dot status-dot--green" aria-hidden="true"></span> Runs locally</li>
+          <li>Windows 10/11</li>
+          <li>GPL-3.0</li>
+          <li>No account or telemetry</li>
+        </ul>
+      </div>
+
+      <div class="hero__product reveal" data-delay="1">
+        <div class="scope" aria-hidden="true">
+          <span class="scope__ring scope__ring--one"></span>
+          <span class="scope__ring scope__ring--two"></span>
+          <span class="scope__core"></span>
+          <span class="scope__sweep"></span>
+        </div>
+        <div class="app-frame">
+          <div class="app-frame__bar">
+            <div class="app-frame__lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span>Live oversight</span>
+            <span class="app-frame__secure"><i aria-hidden="true"></i> Local</span>
+          </div>
+          <img src="assets/tab-overview.png" alt="TraceBrake dashboard showing active alerts, agent status and MCP clients">
+          <div class="app-frame__caption">
+            <span class="status-dot status-dot--amber" aria-hidden="true"></span>
+            <strong>Current alpha:</strong> TraceBrake
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="signal-strip" aria-label="Core product promise">
+      <p>SEE EVERY AGENT</p><i aria-hidden="true"></i>
+      <p>GATE EVERY ACTION</p><i aria-hidden="true"></i>
+      <p>KEEP THE HUMAN IN CONTROL</p>
+    </section>
+
+    <section class="section problem" id="why">
+      <div class="section__intro reveal">
+        <p class="eyebrow">Why TraceBrake</p>
+        <h2>AI moves at machine speed.<br>Accountability shouldn’t disappear.</h2>
+      </div>
+      <div class="problem__body reveal" data-delay="1">
+        <p class="problem__lead">
+          Coding agents can launch processes, change tool configuration, handle credentials
+          and drive browsers or devices. Most actions are useful. Some are stuck, surprising
+          or far outside the operator’s intent.
+        </p>
+        <p>
+          Conventional antivirus sees isolated commands. Agent harnesses see only their own
+          task. TraceBrake joins the context: which harness acted, how its behaviour is changing,
+          what it is trying to reach and whether a person is actually present.
+        </p>
+        <div class="failure-list">
+          <article><span>01</span><p>Orphaned shells and hung update processes</p></article>
+          <article><span>02</span><p>Risky commands without task attribution</p></article>
+          <article><span>03</span><p>Silent MCP and permission drift</p></article>
+          <article><span>04</span><p>Computer use without a shared safety boundary</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section capability-section" id="capabilities">
+      <div class="section__intro section__intro--wide reveal">
+        <p class="eyebrow">One local control plane</p>
+        <h2>Observe the whole system.<br><em>Intervene where it counts.</em></h2>
+        <p>TraceBrake combines endpoint signals, harness identity and operator authority without sending your activity to a hosted service.</p>
+      </div>
+
+      <div class="capability-grid">
+        <article class="capability capability--wide reveal">
+          <div class="capability__number">01</div>
+          <div>
+            <p class="capability__label">Behaviour engine</p>
+            <h3>Risk is a pattern, not one scary command.</h3>
+            <p>Attribute process trees to the harness that spawned them, detect hangs and orphans, and escalate behaviour through Watch, Alert, Alarm and Emergency.</p>
+          </div>
+          <div class="meter" aria-label="Behaviour escalation example">
+            <span class="meter__step meter__step--active"><i></i>Watch</span>
+            <span class="meter__step meter__step--active"><i></i>Alert</span>
+            <span class="meter__step"><i></i>Alarm</span>
+            <span class="meter__step"><i></i>Emergency</span>
+          </div>
+        </article>
+
+        <article class="capability reveal" data-delay="1">
+          <div class="capability__number">02</div>
+          <p class="capability__label">Unified broker</p>
+          <h3>One audited route to the outside world.</h3>
+          <p>Broker browser and opt-in Android/ADB actions through a bounded surface, regardless of which authorised model or harness is driving.</p>
+          <div class="route" aria-hidden="true">
+            <span>CODEX</span><span>CLAUDE</span><span>CURSOR</span><b>TRACEBRAKE</b><span>WEB</span><span>ADB</span>
+          </div>
+        </article>
+
+        <article class="capability reveal" data-delay="2">
+          <div class="capability__number">03</div>
+          <p class="capability__label">Human authority</p>
+          <h3>Presence is a security signal.</h3>
+          <p>Presence Lock and per-harness trust settings distinguish attended work from actions that should ask, hold or stop when the operator is away.</p>
+          <div class="presence-card">
+            <span class="presence-card__icon" aria-hidden="true">⌁</span>
+            <span><small>OPERATOR PRESENCE</small><strong>Required for sensitive action</strong></span>
+            <i aria-hidden="true"></i>
+          </div>
+        </article>
+
+        <article class="capability reveal">
+          <div class="capability__number">04</div>
+          <p class="capability__label">Black box</p>
+          <h3>Evidence before explanation.</h3>
+          <p>Keep an exportable local event history with source attribution, severity and the context needed to reconstruct what happened.</p>
+        </article>
+
+        <article class="capability reveal" data-delay="1">
+          <div class="capability__number">05</div>
+          <p class="capability__label">Vault</p>
+          <h3>Secrets go to destinations—not agents.</h3>
+          <p>Domain-bound credential resolution lets an approved executor fill a live destination without returning the secret to the requesting harness.</p>
+        </article>
+
+        <article class="capability reveal" data-delay="2">
+          <div class="capability__number">06</div>
+          <p class="capability__label">AI checks AI</p>
+          <h3>A second harness can challenge the first.</h3>
+          <p>Route concerning activity and attributed hand-offs to another connected model while keeping the operator as the final authority.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section loop-section" id="control-loop">
+      <div class="section__intro reveal">
+        <p class="eyebrow">The control loop</p>
+        <h2>Fast when it’s routine.<br>Deliberate when it matters.</h2>
+      </div>
+
+      <div class="control-loop reveal" data-delay="1">
+        <div class="control-loop__rail" aria-hidden="true"></div>
+        <article>
+          <span class="loop-index">01</span>
+          <div class="loop-icon">A</div>
+          <h3>Attribute</h3>
+          <p>Connect the action to a harness, process tree and task episode.</p>
+        </article>
+        <article>
+          <span class="loop-index">02</span>
+          <div class="loop-icon">R</div>
+          <h3>Read context</h3>
+          <p>Combine the command, target, trust level, behaviour and presence state.</p>
+        </article>
+        <article>
+          <span class="loop-index">03</span>
+          <div class="loop-icon loop-icon--hot">!</div>
+          <h3>Decide</h3>
+          <p>Allow routine work, ask the operator, or refuse a bounded broker action.</p>
+        </article>
+        <article>
+          <span class="loop-index">04</span>
+          <div class="loop-icon">T</div>
+          <h3>Trace</h3>
+          <p>Record the outcome so later review starts with evidence, not guesswork.</p>
+        </article>
+      </div>
+
+      <div class="boundary-note reveal">
+        <span aria-hidden="true">!</span>
+        <p><strong>An honest boundary:</strong> TraceBrake is safety visibility and a control point for mediated actions—not a Windows sandbox. A process already running as your user may retain the same underlying access as you.</p>
+      </div>
+    </section>
+
+    <section class="section open-section" id="open-source">
+      <div class="open-section__visual reveal">
+        <img src="assets/tab-behavior.png" alt="TraceBrake behaviour dashboard showing per-agent escalation metrics">
+      </div>
+      <div class="open-section__copy reveal" data-delay="1">
+        <p class="eyebrow">Open by design</p>
+        <h2>Trust the controls.<br>Inspect the code.</h2>
+        <p>
+          The current TraceBrake alpha is open source under GPL-3.0-or-later.
+          It runs locally on Windows, requires no account and sends no product telemetry.
+        </p>
+        <dl class="project-stats">
+          <div><dt>Runtime</dt><dd>.NET / WPF</dd></div>
+          <div><dt>Platform</dt><dd>Windows x64</dd></div>
+          <div><dt>State</dt><dd>Local only</dd></div>
+          <div><dt>Stage</dt><dd>Alpha</dd></div>
+        </dl>
+        <div class="open-section__actions">
+          <a class="button button--primary" href="https://github.com/aXL333/Foreman">Explore the source <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/aXL333/Foreman/releases">Current releases <span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="final-cta__mark" aria-hidden="true"><i></i></div>
+      <p class="eyebrow">TraceBrake is here</p>
+      <h2>Autonomy needs accountability.</h2>
+      <p>Formerly Foreman Agent Safety. Same mission, clearer name: give powerful agents accountable brakes.</p>
+      <a class="button button--primary" href="https://github.com/aXL333/Foreman">Follow development on GitHub <span aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand brand--small" href="#top" aria-label="Back to top">
+      <span class="brand__mark" aria-hidden="true"><i></i></span>
+      <span class="brand__name">TRACE<span>BRAKE</span></span>
+    </a>
+    <p>Human-controlled agent safety for Windows.</p>
+    <div>
+      <a href="https://github.com/aXL333/Foreman">GitHub</a>
+      <a href="https://github.com/aXL333/Foreman/blob/main/LICENSE">Licence</a>
+      <span>© <span data-year>2026</span></span>
+    </div>
+  </footer>
+</body>
+</html>

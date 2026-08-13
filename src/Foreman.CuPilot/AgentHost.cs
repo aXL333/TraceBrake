@@ -10,7 +10,7 @@ using System.Text.Json;
 using Foreman.Core.ComputerUse;
 
 /// <summary>
-/// HOP B host (L4) inside the Pilot shim. Foreman tells the shim to start the operator's agent; the shim LAUNCHES it
+/// HOP B host (L4) inside the Pilot shim. TraceBrake tells the shim to start the operator's agent; the shim LAUNCHES it
 /// inside a kill-on-close Job Object (so it dies with the shim even on a hard TerminateProcess), hands it the HOP B
 /// pipe name + a per-session secret via the agent's STDIN (an inherited handle - never argv/file), hosts an owner-only
 /// duplex pipe, and accepts the agent only if it is the LAUNCHED PID AND answers the secret challenge - RE-LOOPING on

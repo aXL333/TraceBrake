@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Foreman.Core.ComputerUse;
 
-// Foreman desktop computer-use sidecar (Slice 4a: handshake + shared-panic READER - still capture-free, input-free).
+// TraceBrake desktop computer-use sidecar (Slice 4a: handshake + shared-panic READER - still capture-free, input-free).
 //   Usage: Foreman.CuSidecar --pipe <name> --nonce <secret> --parent <pid>
 // It connects to the App's duplex owner-only control pipe, proves it holds the launch nonce via challenge-response
 // (HMAC(nonce, handshake-tagged challenge); the nonce never crosses the wire and the App pins our PID), then on Hello

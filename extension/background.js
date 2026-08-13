@@ -1,12 +1,12 @@
 /**
- * Foreman Agent Safety — extension service worker.
+ * TraceBrake — extension service worker.
  *
- * Bridges the browser to the LOCAL Foreman desktop app over loopback HTTP (never the network). Two phases:
- *   1. Pairing (one-time): the user clicks "Pair browser extension" in Foreman → Foreman shows a short code →
+ * Bridges the browser to the LOCAL TraceBrake desktop app over loopback HTTP (never the network). Two phases:
+ *   1. Pairing (one-time): the user clicks "Pair browser extension" in TraceBrake → TraceBrake shows a short code →
  *      the user types it on the options page → we prove we hold it via a challenge/response (the code never
- *      crosses the wire) → Foreman allow-lists our origin and hands back a scoped bearer token.
+ *      crosses the wire) → TraceBrake allow-lists our origin and hands back a scoped bearer token.
  *   2. Connected: we poll /health for liveness and call the MCP endpoint (with the token) for status/alerts,
- *      feed the side panel, surface the Ask-Harness inbox, and act as the executor for Foreman's audited
+ *      feed the side panel, surface the Ask-Harness inbox, and act as the executor for TraceBrake's audited
  *      browser-use (BU) broker.
  *
  * The extension has host_permissions for 127.0.0.1/localhost, so the service worker can fetch the loopback
@@ -28,7 +28,7 @@ let sidePanelPort = null;
 let pollTimer = null;
 let mcpSession = null;
 let pinnedTab = null;           // operator's shared-attention pin (tab id) set by pressing the toolbar icon; null = none
-let lastReportedPin = null;     // last pin value pushed to Foreman, so we re-report changes (incl. clears) exactly once
+let lastReportedPin = null;     // last pin value pushed to TraceBrake, so we re-report changes (incl. clears) exactly once
 const POLL_MS = 5000;
 
 // Persist the pin to session storage so a service-worker restart reloads it (in bootstrap) instead of dropping to
@@ -36,7 +36,7 @@ const POLL_MS = 5000;
 function persistPin() { try { chrome.storage.session.set({ pinnedTab }); } catch { /* session storage unavailable */ } }
 
 // Visible pin indicator on the toolbar icon (per-tab badge), so pressing the icon gives instant feedback even
-// before the Foreman round-trip: a badge on the pinned tab, cleared on the previously-pinned one.
+// before the TraceBrake round-trip: a badge on the pinned tab, cleared on the previously-pinned one.
 function updatePinBadge(prevTab, newTab) {
     try {
         if (prevTab != null && prevTab !== newTab) chrome.action.setBadgeText({ tabId: prevTab, text: '' });
@@ -61,11 +61,11 @@ async function hmacHex(key, message) {
 
 async function pair(code) {
     const clean = (code || '').trim().toUpperCase();
-    if (!clean) return { ok: false, error: 'Enter the code shown in Foreman.' };
+    if (!clean) return { ok: false, error: 'Enter the code shown in TraceBrake.' };
     try {
         const cr = await fetch(`${base()}/pair/challenge`);
-        if (cr.status === 409) return { ok: false, error: 'No pairing window is open. Click "Pair browser extension" in Foreman first.' };
-        if (!cr.ok) return { ok: false, error: `Foreman returned ${cr.status} for the challenge.` };
+        if (cr.status === 409) return { ok: false, error: 'No pairing window is open. Click "Pair browser extension" in TraceBrake first.' };
+        if (!cr.ok) return { ok: false, error: `TraceBrake returned ${cr.status} for the challenge.` };
         const { challenge } = await cr.json();
 
         const response = await hmacHex(clean, challenge);
@@ -85,7 +85,7 @@ async function pair(code) {
         await refresh();
         return { ok: true };
     } catch (e) {
-        return { ok: false, error: `Could not reach Foreman at ${base()} — is it running? (${e})` };
+        return { ok: false, error: `Could not reach TraceBrake at ${base()} — is it running? (${e})` };
     }
 }
 
@@ -124,7 +124,7 @@ function describeMcpFailure(e) {
             code: 'token-rejected',
             status,
             title: 'Saved browser token was rejected',
-            message: 'Foreman is running, but it rejected the token this extension stored when it paired. In Foreman, open Connect agent -> Pair browser extension, then enter the new code in this extension.',
+            message: 'TraceBrake is running, but it rejected the token this extension stored when it paired. In TraceBrake, open Connect agent -> Pair browser extension, then enter the new code in this extension.',
             detail,
         };
     }
@@ -135,7 +135,7 @@ function describeMcpFailure(e) {
             code: 'origin-denied',
             status,
             title: 'Browser extension is not allowed',
-            message: 'Foreman is running, but this extension origin is not allowed to call MCP. Pair the extension again so Foreman can allow-list this browser profile.',
+            message: 'TraceBrake is running, but this extension origin is not allowed to call MCP. Pair the extension again so TraceBrake can allow-list this browser profile.',
             detail,
         };
     }
@@ -145,13 +145,13 @@ function describeMcpFailure(e) {
         code: status ? `http-${status}` : 'mcp-error',
         status,
         title: 'MCP request failed',
-        message: detail || 'Foreman did not accept the MCP request.',
+        message: detail || 'TraceBrake did not accept the MCP request.',
         detail,
     };
 }
 
 // Single place that opens (or reuses) the MCP session and calls a tool. On any failure it drops the cached
-// session so the next call reopens — Foreman uses short-lived per-request sessions, so a stale id is expected.
+// session so the next call reopens — TraceBrake uses short-lived per-request sessions, so a stale id is expected.
 async function mcpCall(name, args = {}) {
     if (!cfg.token) return null;
     try {
@@ -176,9 +176,9 @@ async function replyAsk(requestId, response) {
     return ok ? { ok: true } : { ok: false, error: (r && (r.reason || r.error)) || lastMcpError || 'Reply was not accepted.' };
 }
 
-// ── Browser use (BU) — executor for Foreman's audited cu_* broker ───────────────
-// Foreman AUDITS every action (and holds risky ones for operator approval) BEFORE it reaches here; this
-// extension is only the executor for actions Foreman already APPROVED. Two capability tiers:
+// ── Browser use (BU) — executor for TraceBrake's audited cu_* broker ───────────────
+// TraceBrake AUDITS every action (and holds risky ones for operator approval) BEFORE it reaches here; this
+// extension is only the executor for actions TraceBrake already APPROVED. Two capability tiers:
 //   Bounded (tabs API only): navigate (new tab), goto (same tab), back/forward (tab history), read (tab metadata).
 //   Broad (per-site grant): click / type / scroll via chrome.scripting on a page the operator EXPLICITLY allowed
 //     (the "Browser fill access" panel; chrome.permissions.contains is re-checked here, fail-closed). `type` may
@@ -237,12 +237,12 @@ async function fillGate(tab) {
     let u;
     try { u = new URL(tab.url || ''); } catch { return { ok: false, error: 'That tab has no fillable page URL.' }; }
     if (u.protocol !== 'https:' && u.protocol !== 'http:')
-        return { ok: false, error: `Foreman fills only http(s) pages, not '${u.protocol}'.` };
+        return { ok: false, error: `TraceBrake fills only http(s) pages, not '${u.protocol}'.` };
     const pattern = `${u.protocol}//${u.hostname}/*`;
     let granted = false;
     try { granted = await chrome.permissions.contains({ origins: [pattern] }); } catch { granted = false; }
     if (!granted)
-        return { ok: false, error: `Foreman isn't allowed to act on ${u.hostname}. Open the side panel and click "Allow Foreman on the current site" first.` };
+        return { ok: false, error: `TraceBrake isn't allowed to act on ${u.hostname}. Open the side panel and click "Allow TraceBrake on the current site" first.` };
     return { ok: true, host: u.hostname, origin: u.origin };
 }
 
@@ -372,7 +372,7 @@ async function executeCuAction(act) {
         case 'navigate': {
             const url = String(args.url || '');
             // Scheme-gate to http(s) (rejects javascript:/data:/file:/chrome:/about:), then confirm it parses.
-            // Defense-in-depth even though Foreman already audited the action upstream.
+            // Defense-in-depth even though TraceBrake already audited the action upstream.
             if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'navigate requires an http(s) url.' };
             try { new URL(url); } catch { return { ok: false, error: 'navigate requires a valid url.' }; }
             const tab = await chrome.tabs.create({ url, active: true });
@@ -513,7 +513,7 @@ async function pollCu() {
     }
 }
 
-// Tell Foreman which tab the operator pinned as shared attention, so the broker holds off-focus state changes.
+// Tell TraceBrake which tab the operator pinned as shared attention, so the broker holds off-focus state changes.
 async function reportAttention() {
     if (lastMcpAuthProblem) return;
     await mcpCall('cu_set_attention', { tabId: pinnedTab == null ? '' : String(pinnedTab) });
@@ -527,7 +527,7 @@ async function refresh() {
     lastAsks = [];
     if (connected && cfg.token)
         lastStatus = await mcpCall('foreman_status');
-    // Re-assert the pin each cycle so it survives a Foreman restart, and push a CLEAR exactly once when it goes to
+    // Re-assert the pin each cycle so it survives a TraceBrake restart, and push a CLEAR exactly once when it goes to
     // null, so a restarted worker (or an unpin) always reconciles the broker to our true state before pollCu runs.
     if (connected && !lastMcpAuthProblem && (pinnedTab != null || lastReportedPin != null)) {
         await reportAttention();
@@ -536,7 +536,7 @@ async function refresh() {
     if (!lastMcpAuthProblem)
         await pollCu();
     // The inbox is scoped to THIS extension's harness ("browser-extension") by the token — it only ever shows
-    // prompts Foreman routed to us, never a sibling's. Empty until orchestration routes work to the browser.
+    // prompts TraceBrake routed to us, never a sibling's. Empty until orchestration routes work to the browser.
     if (connected && cfg.token && !lastMcpAuthProblem) {
         const asks = await mcpCall('list_ask_harness_requests', { includeAnswered: false, limit: 10 });
         lastAsks = Array.isArray(asks?.requests) ? asks.requests : [];
@@ -597,7 +597,7 @@ function safePost(message) {
 }
 
 // Pressing the pinned toolbar icon toggles the shared-attention pin on that tab (press again = unpin, press a
-// DIFFERENT tab = move the pin), reports it to Foreman, and opens the side panel. openPanelOnActionClick MUST be
+// DIFFERENT tab = move the pin), reports it to TraceBrake, and opens the side panel. openPanelOnActionClick MUST be
 // false here — otherwise Chrome opens the panel itself and never fires onClicked, so we'd never see the press.
 chrome.action.onClicked.addListener((tab) => {
     // sidePanel.open() MUST run synchronously in the click's user-gesture turn. Calling it after an `await`
@@ -615,7 +615,7 @@ chrome.action.onClicked.addListener((tab) => {
 });
 try { chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }); } catch { /* Chrome < 114 */ }
 
-// If the pinned tab closes, drop the pin (and tell Foreman) so a stale id can't linger as the "focus".
+// If the pinned tab closes, drop the pin (and tell TraceBrake) so a stale id can't linger as the "focus".
 chrome.tabs.onRemoved.addListener((tabId) => {
     if (pinnedTab === tabId) { pinnedTab = null; persistPin(); reportAttention().then(() => { lastReportedPin = null; }); broadcast(); }
 });

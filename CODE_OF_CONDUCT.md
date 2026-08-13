@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Foreman Agent Safety is a safety tool. Project discussion should be practical, respectful, and focused on making agent work more visible and accountable.
+TraceBrake is a safety tool. Project discussion should be practical, respectful, and focused on making agent work more visible and accountable.
 
 ## Expected Behavior
 

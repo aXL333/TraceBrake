@@ -8,9 +8,9 @@ namespace Foreman.Core.Security;
 /// the sidecar's filter is verified without needing elevation.
 ///
 /// Two correctness points:
-///   1. Foreman itself reads the decoy files during sentinel re-validation
+///   1. TraceBrake itself reads the decoy files during sentinel re-validation
 ///      (<see cref="DecoyCredentialManager.Revalidate"/>) and on plant/remove — so the app's own PID (and the
-///      sidecar's) MUST be excluded, or Foreman would alarm on its own housekeeping.
+///      sidecar's) MUST be excluded, or TraceBrake would alarm on its own housekeeping.
 ///   2. A CANONICAL decoy sits at a path real tools also read (git's HTTPS helper reads ~/.netrc and
 ///      ~/.git-credentials on every push, npm/node read ~/.npmrc, ssh reads ~/.ssh/id_rsa). Reading such a
 ///      decoy from that path's OWN legitimate tool is normal and is suppressed via <see cref="ExpectedReaders"/>;
@@ -22,7 +22,7 @@ public static class DecoyAuditPolicy
     /// <summary>
     /// True when a 4663 read of <paramref name="objectName"/> by <paramref name="subjectPid"/>
     /// (<paramref name="readerImage"/> is the accessing executable) is a real decoy read: the path equals one
-    /// of <paramref name="decoyPaths"/>, the reader is not an excluded PID (Foreman app + sidecar), and — for a
+    /// of <paramref name="decoyPaths"/>, the reader is not an excluded PID (TraceBrake app + sidecar), and — for a
     /// canonical decoy — the reader is not that path's expected legitimate tool.
     /// </summary>
     public static bool IsDecoyRead(

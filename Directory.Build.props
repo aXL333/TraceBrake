@@ -1,16 +1,16 @@
 <Project>
   <PropertyGroup>
-    <Product>Foreman Agent Safety</Product>
-    <Title>Foreman Agent Safety</Title>
+    <Product>TraceBrake</Product>
+    <Title>TraceBrake</Title>
     <Company>aXL333</Company>
     <Authors>aXL333</Authors>
     <Version>0.1.0</Version>
-    <Description>Foreman Agent Safety is a Windows safety monitor for AI coding agents: watch risky commands, stuck runs, MCP changes, and cross-agent audit workflows.</Description>
+    <Description>TraceBrake is a Windows safety broker and black box for AI agents: watch risky actions, broker computer use, preserve evidence, and keep the operator in control.</Description>
     <Copyright>Copyright (c) 2026 aXL333</Copyright>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/aXL333/Foreman</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/aXL333/Foreman</PackageProjectUrl>
+    <PackageProjectUrl>https://tracebrake.com</PackageProjectUrl>
     <PackageTags>ai;agent-safety;mcp;windows;monitoring;security</PackageTags>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

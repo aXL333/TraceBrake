@@ -55,7 +55,7 @@ foreach ($package in $packages) {
 }
 
 $requiredExecutables = @(
-    'Foreman.exe',
+    'TraceBrake.exe',
     'sidecar\Foreman.EtwSidecar.exe',
     'guardian\Foreman.Guardian.exe',
     'cu-sidecar\Foreman.CuSidecar.exe',

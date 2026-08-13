@@ -60,6 +60,7 @@ public sealed class SettingsSealTests
     [InlineData("decoyRead")]
     [InlineData("peerBinding")]
     [InlineData("capabilities")]
+    [InlineData("universalTrust")]
     [InlineData("adb")]
     [InlineData("adbHash")]
     [InlineData("mute")]
@@ -80,6 +81,7 @@ public sealed class SettingsSealTests
             case "decoyRead":       s.DecoyCredentials.EnableReadAuditing = false; break;
             case "peerBinding":     s.McpPeerBindingEnforce = false; break;
             case "capabilities":    s.HarnessCapabilityRestrictions["claude-code"].BrowserUse = HarnessCapabilityAccess.Allow; break;
+            case "universalTrust":  s.UniversalTrust.Profiles[3].AdbControl = TrustPrivilegeMode.UnattendedIncludingLocked; break;
             case "adb":
                 s.AdbBridge.Enabled = true;
                 s.AdbBridge.ExecutablePath = @"C:\Android\platform-tools\adb.exe";
@@ -131,5 +133,15 @@ public sealed class SettingsSealTests
         var s = Base();
         var seal = SettingsSeal.Compute(s, Secret);
         Assert.Equal(SettingsSealVerdict.Tampered, SettingsSeal.Verify(s, seal, "different-secret"));
+    }
+
+    [Fact]
+    public void PreviousL2Projection_IsRecognisedAndMigratedInsteadOfReportedTampered()
+    {
+        var settings = Base();
+        var oldSeal = SettingsSeal.LocalScheme
+            + SettingsSeal.ComputeMac(SettingsSeal.LegacySecurityProjectionV2(settings), Secret);
+
+        Assert.Equal(SettingsSealVerdict.LegacySealed, SettingsSeal.Verify(settings, oldSeal, Secret));
     }
 }

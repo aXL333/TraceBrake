@@ -2,7 +2,7 @@ namespace Foreman.Core.Security;
 
 /// <summary>
 /// Dead-man's switch (task #62): a periodic human tap-in. If the operator goes away for a long stretch WHILE
-/// agents keep running, Foreman is effectively operating unattended — the window in which a rogue or
+/// agents keep running, TraceBrake is effectively operating unattended — the window in which a rogue or
 /// prompt-injected agent can do the most damage with nobody watching. Opt-in; raises one heads-up notice per
 /// absence episode and re-arms when the operator returns.
 /// </summary>
