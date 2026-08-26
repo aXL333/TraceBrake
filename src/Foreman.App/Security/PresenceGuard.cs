@@ -74,14 +74,20 @@ public static class PresenceGuard
 
     /// <summary>
     /// Disarm the lock — itself a presence tap when armed (turning the lock off is the ultimate weakening, so it
-    /// can't be a one-click escape). Recovery from a lost authenticator is editing settings.json. Returns (ok, message).
+    /// can't be a one-click escape). Lost-authenticator recovery uses the documented verified-settings recovery flow;
+    /// a direct settings.json edit is sealed and rejected. Returns (ok, message).
     /// </summary>
     public static async Task<(bool Ok, string Message)> DisableAsync()
     {
         if (_settings is null) return (false, "Presence lock not initialized.");
         var s = _settings.PresenceLock;
-        if (s.Enabled && !string.IsNullOrEmpty(s.CredentialId))
+        if (s.Enabled)
         {
+            // Enabled-without-a-credential is the Guardian-unavailable degraded posture (and also a possible
+            // corrupted configuration). It must not turn the absence of an authenticator into a one-click bypass.
+            // Recovery is restoring verified settings / the documented settings-file recovery path.
+            if (string.IsNullOrEmpty(s.CredentialId))
+                return (false, "No verified authenticator is available — the presence lock stays armed.");
             PresenceResult r;
             // Disabling the lock entirely is the ultimate weakening, so demand full verification, not just a touch.
             try { r = await _verifier.VerifyAsync(s.CredentialId, "Authorize disabling the presence lock", requireUserVerification: true).ConfigureAwait(false); }

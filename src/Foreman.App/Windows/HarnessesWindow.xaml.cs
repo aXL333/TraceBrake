@@ -26,7 +26,7 @@ public partial class HarnessesWindow : UserControl
     /// <summary>Read / set the global computer-use driver (operator-only). Wired by the hosting TrayController to the
     /// CuBroker so the per-harness settings popup can authorize a harness past the "no CU driver selected" gate.</summary>
     public Func<string?>? GetCuDriver { get; set; }
-    public Action<string?>? SetCuDriver { get; set; }
+    public Func<string?, Task<(bool Ok, string Reason)>>? SetCuDriver { get; set; }
     public Func<string?>? GetCuAttentionTab { get; set; }
 
     public HarnessesWindow(

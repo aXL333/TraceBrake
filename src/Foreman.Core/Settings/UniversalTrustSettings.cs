@@ -18,11 +18,11 @@ public enum TrustPrivilegeMode
 /// <summary>The browser/desktop/Android capability policy attached to one universal Trust level.</summary>
 public sealed class TrustCapabilityProfile
 {
-    public TrustPrivilegeMode BrowserObservation { get; set; } = TrustPrivilegeMode.UnattendedIncludingLocked;
-    public TrustPrivilegeMode BrowserControl { get; set; } = TrustPrivilegeMode.UnattendedIncludingLocked;
+    public TrustPrivilegeMode BrowserObservation { get; set; } = TrustPrivilegeMode.UnattendedWhileUnlocked;
+    public TrustPrivilegeMode BrowserControl { get; set; } = TrustPrivilegeMode.AskEveryTime;
     public TrustPrivilegeMode DesktopObservation { get; set; } = TrustPrivilegeMode.AskEveryTime;
     public TrustPrivilegeMode DesktopControl { get; set; } = TrustPrivilegeMode.AskEveryTime;
-    public TrustPrivilegeMode AdbObservation { get; set; } = TrustPrivilegeMode.UnattendedIncludingLocked;
+    public TrustPrivilegeMode AdbObservation { get; set; } = TrustPrivilegeMode.UnattendedWhileUnlocked;
     public TrustPrivilegeMode AdbControl { get; set; } = TrustPrivilegeMode.AskEveryTime;
 
     public TrustCapabilityProfile Clone() => new()
@@ -81,9 +81,9 @@ public sealed class TrustCapabilityProfile
 }
 
 /// <summary>
-/// Editable, universal capability profiles for Trust 1–5. Defaults deliberately preserve TraceBrake's pre-profile
-/// behaviour at every level: browser work and Android observation may run after audit; desktop work and Android
-/// control still ask. Nothing gains new unattended authority merely by upgrading.
+/// Editable, universal capability profiles for Trust 1–5. The default level (3) can observe browser/Android state
+/// unattended only while the workstation is unlocked, and all state-changing work asks. Locked-down levels tighten
+/// from there; unattended locked-session browser control exists only at an explicit Trust 5.
 /// </summary>
 public sealed class UniversalTrustSettings
 {
@@ -94,13 +94,52 @@ public sealed class UniversalTrustSettings
         var key = Math.Clamp(level, 1, 5);
         if (Profiles is not null && Profiles.TryGetValue(key, out var profile) && profile is not null)
             return profile;
-        return CreateDefaultProfile();
+        return CreateDefaultProfile(key);
     }
 
     public static Dictionary<int, TrustCapabilityProfile> CreateDefaults() =>
-        Enumerable.Range(1, 5).ToDictionary(level => level, _ => CreateDefaultProfile());
+        Enumerable.Range(1, 5).ToDictionary(level => level, CreateDefaultProfile);
 
-    public static TrustCapabilityProfile CreateDefaultProfile() => new();
+    public static TrustCapabilityProfile CreateDefaultProfile(int level = 3) => Math.Clamp(level, 1, 5) switch
+    {
+        1 => new TrustCapabilityProfile
+        {
+            BrowserObservation = TrustPrivilegeMode.AskEveryTime,
+            BrowserControl = TrustPrivilegeMode.Never,
+            DesktopObservation = TrustPrivilegeMode.Never,
+            DesktopControl = TrustPrivilegeMode.Never,
+            AdbObservation = TrustPrivilegeMode.AskEveryTime,
+            AdbControl = TrustPrivilegeMode.Never,
+        },
+        2 => new TrustCapabilityProfile
+        {
+            BrowserObservation = TrustPrivilegeMode.UnattendedWhileUnlocked,
+            BrowserControl = TrustPrivilegeMode.AskEveryTime,
+            DesktopObservation = TrustPrivilegeMode.AskEveryTime,
+            DesktopControl = TrustPrivilegeMode.AskEveryTime,
+            AdbObservation = TrustPrivilegeMode.UnattendedWhileUnlocked,
+            AdbControl = TrustPrivilegeMode.AskEveryTime,
+        },
+        3 => new TrustCapabilityProfile(),
+        4 => new TrustCapabilityProfile
+        {
+            BrowserObservation = TrustPrivilegeMode.UnattendedIncludingLocked,
+            BrowserControl = TrustPrivilegeMode.UnattendedWhileUnlocked,
+            DesktopObservation = TrustPrivilegeMode.AskEveryTime,
+            DesktopControl = TrustPrivilegeMode.AskEveryTime,
+            AdbObservation = TrustPrivilegeMode.UnattendedIncludingLocked,
+            AdbControl = TrustPrivilegeMode.AskEveryTime,
+        },
+        _ => new TrustCapabilityProfile
+        {
+            BrowserObservation = TrustPrivilegeMode.UnattendedIncludingLocked,
+            BrowserControl = TrustPrivilegeMode.UnattendedIncludingLocked,
+            DesktopObservation = TrustPrivilegeMode.AskEveryTime,
+            DesktopControl = TrustPrivilegeMode.AskEveryTime,
+            AdbObservation = TrustPrivilegeMode.UnattendedIncludingLocked,
+            AdbControl = TrustPrivilegeMode.AskEveryTime,
+        },
+    };
 
     public UniversalTrustSettings Clone() => new()
     {

@@ -8,7 +8,7 @@
     <Description>TraceBrake is a Windows safety broker and black box for AI agents: watch risky actions, broker computer use, preserve evidence, and keep the operator in control.</Description>
     <Copyright>Copyright (c) 2026 aXL333</Copyright>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/aXL333/Foreman</RepositoryUrl>
+    <RepositoryUrl>https://github.com/aXL333/TraceBrake</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://tracebrake.com</PackageProjectUrl>
     <PackageTags>ai;agent-safety;mcp;windows;monitoring;security</PackageTags>

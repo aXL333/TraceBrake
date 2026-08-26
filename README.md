@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg"></a>
-  <a href="https://github.com/aXL333/Foreman/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/aXL333/Foreman/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/aXL333/TraceBrake/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/aXL333/TraceBrake/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%2F11-4A90D9">
   <img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-E8B23C">
 </p>
@@ -114,14 +114,14 @@ Anything else can be added in Settings as a custom harness executable name.
 ### Install
 
 Download the newest maintained alpha installer and its SHA-256 checksum from
-[GitHub Releases](https://github.com/aXL333/Foreman/releases). Releases are self-contained, so users do not need
+[GitHub Releases](https://github.com/aXL333/TraceBrake/releases). Releases are self-contained, so users do not need
 to rebuild TraceBrake or install the .NET SDK. New installations place program files under
 `%LOCALAPPDATA%\Programs\TraceBrake`; mutable settings, vault data, and logs live under
 `%LOCALAPPDATA%\TraceBrake`. Existing Foreman installs upgrade under the same stable installer identity, retain
 their selected program directory, and atomically migrate their complete data lineage on first TraceBrake launch.
 
 The immutable OpenAI Build Week submission snapshot is
-[`v0.1.0-alpha3`](https://github.com/aXL333/Foreman/releases/tag/v0.1.0-alpha3) at commit `c5fd504`.
+[`v0.1.0-alpha3`](https://github.com/aXL333/TraceBrake/releases/tag/v0.1.0-alpha3) at commit `c5fd504`.
 It remains available as deadline evidence. Later releases are clearly labelled post-submission
 maintenance/development builds; use the newest maintained release for hands-on testing and the snapshot when
 reviewing what existed at the deadline.

@@ -10,15 +10,21 @@ namespace Foreman.Monitor;
 /// protected process never appears as a legal target there anyway. This list is the central backstop that holds
 /// even if scoping is bypassed or the operator clicks Kill on something load-bearing. It fails CLOSED — an
 /// unknown name is killable (we don't want to silently refuse a real harness child); the protection is the
-/// explicit set below plus the subtree scope the broker enforces on top.
+/// verified executable identities below plus the subtree scope the broker enforces on top. A basename alone is
+/// never self-protection: a hostile process is free to rename itself TraceBrake.exe or svchost.exe.
 /// </summary>
 public static class KillGuard
 {
     // TraceBrake's own processes. Killing any of these is self-sabotage of the watchdog (or its prevention/telemetry
     // tiers), so it is refused regardless of who asks.
-    private static readonly HashSet<string> ForemanSelf = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> ForemanSelfRelativePaths = new(StringComparer.OrdinalIgnoreCase)
     {
-        "TraceBrake.exe", "Foreman.exe", "Foreman.Guardian.exe", "Foreman.EtwSidecar.exe",
+        ["TraceBrake.exe"] = "TraceBrake.exe",
+        ["Foreman.exe"] = "Foreman.exe",
+        ["Foreman.Guardian.exe"] = Path.Combine("guardian", "Foreman.Guardian.exe"),
+        ["Foreman.EtwSidecar.exe"] = Path.Combine("sidecar", "Foreman.EtwSidecar.exe"),
+        ["Foreman.CuSidecar.exe"] = Path.Combine("cu-sidecar", "Foreman.CuSidecar.exe"),
+        ["Foreman.CuPilot.exe"] = Path.Combine("cu-pilot", "Foreman.CuPilot.exe"),
     };
 
     // Windows OS hosts + the desktop shell. Terminating any of these destabilises the whole session, never just
@@ -42,8 +48,74 @@ public static class KillGuard
     /// <summary>PIDs that must never be terminated: 0 (Idle), 4 (System), and TraceBrake's own PID.</summary>
     public static bool IsProtectedPid(int pid) => pid <= 4 || pid == Environment.ProcessId;
 
-    /// <summary>True if this process must never be terminated — by low/own PID, or by a protected process name.</summary>
-    public static bool IsProtected(int pid, string? name) =>
-        IsProtectedPid(pid)
-        || (name is not null && (ForemanSelf.Contains(name) || SystemHosts.Contains(name)));
+    /// <summary>
+    /// True only for a low/own PID or a protected basename at its trusted executable location. Optional roots are
+    /// injectable for deterministic tests; production defaults to the running app, Windows, and Program Files.
+    /// </summary>
+    public static bool IsProtected(
+        int pid,
+        string? name,
+        string? executablePath,
+        string? appBaseDirectory = null,
+        string? windowsDirectory = null,
+        string? programFilesDirectory = null)
+    {
+        if (IsProtectedPid(pid)) return true;
+        if (string.IsNullOrWhiteSpace(name)) return false;
+
+        var normalizedName = Path.GetFileName(name);
+        if (!normalizedName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(normalizedName, "System", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(normalizedName, "Registry", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(normalizedName, "MemCompression", StringComparison.OrdinalIgnoreCase))
+            normalizedName += ".exe";
+
+        // Identity lookup can fail across integrity boundaries. For a known load-bearing basename, uncertainty
+        // fails closed; once a concrete non-trusted path is available, basename spoofing remains killable.
+        if (string.IsNullOrWhiteSpace(executablePath))
+            return ForemanSelfRelativePaths.ContainsKey(normalizedName)
+                   || SystemHosts.Contains(normalizedName)
+                   || SystemHosts.Contains(name);
+
+        var appRoot = appBaseDirectory ?? AppContext.BaseDirectory;
+        if (ForemanSelfRelativePaths.TryGetValue(normalizedName, out var relative))
+        {
+            if (PathsEqual(executablePath, Path.Combine(appRoot, relative))) return true;
+
+            // The Guardian service is copied to a machine-protected Program Files root, which may differ from a
+            // portable/dev app base directory.
+            if (string.Equals(normalizedName, "Foreman.Guardian.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                var pf = programFilesDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                if (!string.IsNullOrWhiteSpace(pf) &&
+                    PathsEqual(executablePath, Path.Combine(pf, "Foreman", "guardian", "Foreman.Guardian.exe")))
+                    return true;
+            }
+        }
+
+        if (SystemHosts.Contains(normalizedName) || SystemHosts.Contains(name))
+        {
+            var windowsRoot = windowsDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            return !string.IsNullOrWhiteSpace(windowsRoot) && IsWithin(executablePath, windowsRoot);
+        }
+
+        return false;
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        try { return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
+    }
+
+    private static bool IsWithin(string candidate, string root)
+    {
+        try
+        {
+            var fullCandidate = Path.GetFullPath(candidate);
+            var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+            return fullCandidate.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
 }

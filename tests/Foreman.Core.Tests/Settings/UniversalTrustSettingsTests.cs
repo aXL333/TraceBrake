@@ -10,20 +10,23 @@ public sealed class UniversalTrustSettingsTests
         new(modality, verb, new Dictionary<string, string>(), ByHarness: "codex");
 
     [Fact]
-    public void Defaults_PreserveExistingBrokerAuthorityAtEveryTrustLevel()
+    public void Defaults_RequireExplicitHighTrustForLockedBrowserControl()
     {
         var settings = new UniversalTrustSettings();
 
-        foreach (var level in Enumerable.Range(1, 5))
+        foreach (var level in Enumerable.Range(1, 3))
         {
             var profile = settings.ForLevel(level);
-            Assert.Equal(TrustPrivilegeMode.UnattendedIncludingLocked, profile.BrowserObservation);
-            Assert.Equal(TrustPrivilegeMode.UnattendedIncludingLocked, profile.BrowserControl);
-            Assert.Equal(TrustPrivilegeMode.AskEveryTime, profile.DesktopObservation);
-            Assert.Equal(TrustPrivilegeMode.AskEveryTime, profile.DesktopControl);
-            Assert.Equal(TrustPrivilegeMode.UnattendedIncludingLocked, profile.AdbObservation);
-            Assert.Equal(TrustPrivilegeMode.AskEveryTime, profile.AdbControl);
+            Assert.NotEqual(TrustPrivilegeMode.UnattendedIncludingLocked, profile.BrowserControl);
+            Assert.True(TrustCapabilityPolicy.Evaluate(profile.BrowserControl, sessionLocked: false).RequiresApproval
+                        || profile.BrowserControl == TrustPrivilegeMode.Never);
+            Assert.True(TrustCapabilityPolicy.Evaluate(profile.BrowserObservation, sessionLocked: true).RequiresApproval
+                        || profile.BrowserObservation == TrustPrivilegeMode.Never);
         }
+
+        Assert.Equal(TrustPrivilegeMode.UnattendedWhileUnlocked, settings.ForLevel(4).BrowserControl);
+        Assert.Equal(TrustPrivilegeMode.UnattendedIncludingLocked, settings.ForLevel(5).BrowserControl);
+        Assert.Equal(TrustPrivilegeMode.Never, settings.ForLevel(1).DesktopControl);
     }
 
     [Theory]
@@ -116,7 +119,7 @@ public sealed class UniversalTrustSettingsTests
         var before = new TrustCapabilityProfile();
         var after = before.Clone();
         after.AdbObservation = TrustPrivilegeMode.UnattendedIncludingLocked;
-        Assert.False(TrustCapabilityPolicy.IsRelaxation(before, after));
+        Assert.True(TrustCapabilityPolicy.IsRelaxation(before, after));
 
         after.DesktopObservation = TrustPrivilegeMode.UnattendedIncludingLocked;
         Assert.True(TrustCapabilityPolicy.IsRelaxation(before, after));

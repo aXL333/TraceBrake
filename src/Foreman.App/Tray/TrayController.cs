@@ -7,6 +7,7 @@ using Foreman.Core.Models;
 using Foreman.Core.Power;
 using Foreman.Core.Settings;
 using Foreman.McpServer;
+using Foreman.Monitor;
 using H.NotifyIcon;
 using System.Windows;
 using System.Windows.Controls;
@@ -53,8 +54,9 @@ public sealed class TrayController : IEventSink, IDisposable
     public Func<IEnumerable<BehaviorProfile>>?                GetBehaviorProfiles  { get; set; }
     public Action<string>?                                    ResetBehaviorProfile  { get; set; }
     public Func<string, IEnumerable<ProcessRecord>>?          GetProcessesByHarness { get; set; }
-    public Action<string>?                                    KillHarness           { get; set; }
-    public Action<string>?                                    DisableHarness        { get; set; }
+    public Func<string, HarnessTerminationResult>?            KillHarness           { get; set; }
+    public Func<int, string?>?                                ResolveHarnessByPid   { get; set; }
+    public Func<string, (bool Ok, string Message)>?            DisableHarness        { get; set; }
 
     /// <summary>Injected from App — routes the offending harness to an independent auditor (same flow as the
     /// auto-audit response). Backs the Emergency popup's "Audit Harness" button.</summary>
@@ -104,7 +106,7 @@ public sealed class TrayController : IEventSink, IDisposable
 
     /// <summary>Injected from App — read/set the mediated computer-use (cu_*) driver harness in-process (operator).</summary>
     public Func<string?>?                                     GetCuDriver           { get; set; }
-    public Action<string?>?                                   SetCuDriver           { get; set; }
+    public Func<string?, Task<(bool Ok, string Reason)>>?      SetCuDriver           { get; set; }
 
     /// <summary>Injected from App — held CU actions for the operator approve/reject window, plus the approve (mirrors
     /// cu_approve incl. the desktop presence tap) and reject actions. Lets the operator clear a held action in-app.</summary>
@@ -335,8 +337,9 @@ public sealed class TrayController : IEventSink, IDisposable
         {
             EscalationAlarmWindow.ShowFor(
                 esc,
-                id => KillHarness?.Invoke(id),
-                id => DisableHarness?.Invoke(id),
+                id => KillHarness?.Invoke(id)
+                      ?? new HarnessTerminationResult(id, 0, 0, 0, 0),
+                id => DisableHarness?.Invoke(id) ?? (false, "Disabling harness monitoring isn't available."),
                 AuditHarness is { } audit ? e => audit(e) : null);
         }
     }
@@ -573,6 +576,7 @@ public sealed class TrayController : IEventSink, IDisposable
             w.GetWakeRequests = GetWakeRequests;
             w.GetContextUsage = id => GetContextUsage?.Invoke(id);
             w.RequestHarnessCleanup = id => RequestHarnessCleanup?.Invoke(id) ?? (false, "Cleanup isn't available.");
+            w.KillHarness = KillHarness;
             w.ResetBehaviorMetrics = id => ResetBehaviorProfile?.Invoke(id);
             w.GetPendingAskCount = id => GetPendingAskCount?.Invoke(id) ?? 0;
             w.GetGameModeActive = () => GameModeActive;
@@ -590,14 +594,15 @@ public sealed class TrayController : IEventSink, IDisposable
                 GetCuAttentionTab = GetCuAttentionTab,
             };
             w.HostViews(
-                processes: new ProcessMonitorWindow(snap, GetNetRate, RequestHarnessCleanup),
+                processes: new ProcessMonitorWindow(
+                    snap, GetNetRate, RequestHarnessCleanup, KillHarness, ResolveHarnessByPid),
                 harnesses: harnessesView,
                 behavior:  new BehaviorMetricsWindow(
                     _settings,
                     GetBehaviorProfiles   ?? (() => []),
                     ResetBehaviorProfile  ?? (_ => { }),
                     GetProcessesByHarness ?? (_ => []),
-                    KillHarness           ?? (_ => { })),
+                    KillHarness           ?? (id => new HarnessTerminationResult(id, 0, 0, 0, 0))),
                 log: new LogWindow(),
                 vault: BuildVaultView(),
                 approvals: BuildCuApprovalsView(),

@@ -129,8 +129,8 @@ public sealed class CuBrokerDesktopDriverTests
         b.SetActiveWindow(Win(100));
         var item = await b.SubmitAsync(Desk("left_click", Agent), new CuContext(Agent));
         Assert.Equal(CuActionState.Approved, item.State);
-        Assert.Empty(b.Claim(10, CuModality.Browser));    // the MCP poll path (Browser-only) never sees a Desktop item
-        Assert.Single(b.Claim(10, CuModality.Desktop));   // an in-process desktop executor can claim it
+        Assert.Empty(b.Claim(10, CuModality.Browser, "browser-test-executor"));    // the MCP poll path never sees Desktop
+        Assert.Single(b.Claim(10, CuModality.Desktop, "desktop-test-executor"));   // an in-process executor can claim it
     }
 
     private sealed class GatedAllow : IAuditor
@@ -158,6 +158,6 @@ public sealed class CuBrokerDesktopDriverTests
         g.Release.Release();           // let the audit complete and try to write its verdict back
         var item = await submit;
         Assert.NotEqual(CuActionState.Approved, item.State);   // must NOT be resurrected to Approved
-        Assert.Empty(b.Claim(10));                              // and nothing is claimable
+        Assert.Empty(b.Claim(10, CuModality.Desktop, "desktop-test-executor")); // and nothing is claimable
     }
 }

@@ -192,6 +192,17 @@ public sealed class CallerScopeToolTests : IDisposable
             GetBehaviorProfiles = () => [new BehaviorProfile("codex"), new BehaviorProfile("claude-code")],
             ResetBehaviorProfile = id => _lastReset = id,
             KillProcessByPid = (pid, _) => { _killed.Add(pid); return true; },
+            McpOperatorPresenceGate = _ => System.Threading.Tasks.Task.FromResult(true),
+        };
+        _state.HarnessCapabilityRestrictions["codex"] = new HarnessCapabilityRestrictions
+        {
+            ComputerUse = HarnessCapabilityAccess.Allow,
+            BrowserUse = HarnessCapabilityAccess.Allow,
+        };
+        _state.HarnessCapabilityRestrictions["claude-code"] = new HarnessCapabilityRestrictions
+        {
+            ComputerUse = HarnessCapabilityAccess.Allow,
+            BrowserUse = HarnessCapabilityAccess.Allow,
         };
         ForemanMcpTools.SetState(_state);
     }
@@ -288,15 +299,15 @@ public sealed class CallerScopeToolTests : IDisposable
     }
 
     [Fact]
-    public void ResetBehaviorMetrics_CodexCaller_DeniedOnClaude()
+    public async System.Threading.Tasks.Task ResetBehaviorMetrics_HarnessCannotClearAnyAccumulation()
     {
-        using var doc = J(ForemanMcpTools.ResetBehaviorMetrics("claude-code", http: AsCodex));
+        using var doc = J(await ForemanMcpTools.ResetBehaviorMetrics("claude-code", http: AsCodex));
         Assert.False(doc.RootElement.GetProperty("reset").GetBoolean());
         Assert.Null(_lastReset);
 
-        using var ok = J(ForemanMcpTools.ResetBehaviorMetrics("codex", http: AsCodex));
-        Assert.True(ok.RootElement.GetProperty("reset").GetBoolean());
-        Assert.Equal("codex", _lastReset);
+        using var own = J(await ForemanMcpTools.ResetBehaviorMetrics("codex", http: AsCodex));
+        Assert.False(own.RootElement.GetProperty("reset").GetBoolean());
+        Assert.Null(_lastReset);
     }
 
     [Fact]
@@ -308,7 +319,7 @@ public sealed class CallerScopeToolTests : IDisposable
             harnessId: "claude-code",
             http: AsCodex));
 
-        Assert.True(doc.RootElement.GetProperty("acknowledged").GetBoolean());
+        Assert.False(doc.RootElement.GetProperty("acknowledged").GetBoolean());
         Assert.False(doc.RootElement.GetProperty("metricsReset").GetBoolean());
         Assert.Equal("codex", doc.RootElement.GetProperty("harnessId").GetString());
         Assert.Null(_lastReset);
@@ -323,9 +334,9 @@ public sealed class CallerScopeToolTests : IDisposable
             http: AsCodex));
 
         Assert.True(doc.RootElement.GetProperty("acknowledged").GetBoolean());
-        Assert.True(doc.RootElement.GetProperty("metricsReset").GetBoolean());
+        Assert.False(doc.RootElement.GetProperty("metricsReset").GetBoolean());
         Assert.Equal("codex", doc.RootElement.GetProperty("harnessId").GetString());
-        Assert.Equal("codex", _lastReset);
+        Assert.Null(_lastReset);
     }
 
     [Fact]
@@ -419,9 +430,9 @@ public sealed class CallerScopeToolTests : IDisposable
 
     // ── Process broker: own-tree reaping is executed + recorded; cross-tree is refused; theft is refused ──────
     [Fact]
-    public void RequestProcessKill_CodexCaller_ReapsOwnChild_AndRecordsExpected()
+    public async System.Threading.Tasks.Task RequestProcessKill_CodexCaller_ReapsOwnChild_AndRecordsExpected()
     {
-        using var doc = J(ForemanMcpTools.RequestProcessKill(_codexChild.Pid, "runaway hook", http: AsCodex));
+        using var doc = J(await ForemanMcpTools.RequestProcessKill(_codexChild.Pid, "runaway hook", http: AsCodex));
         Assert.True(doc.RootElement.GetProperty("executed").GetBoolean());
         Assert.Equal("killed", doc.RootElement.GetProperty("status").GetString());
         Assert.Contains(_codexChild.Pid, _killed);
@@ -429,9 +440,9 @@ public sealed class CallerScopeToolTests : IDisposable
     }
 
     [Fact]
-    public void RequestProcessKill_CodexCaller_CannotKillSibling_EscalatesNotExecutes()
+    public async System.Threading.Tasks.Task RequestProcessKill_CodexCaller_CannotKillSibling_EscalatesNotExecutes()
     {
-        using var doc = J(ForemanMcpTools.RequestProcessKill(_claude.Pid, "stop the other agent", http: AsCodex));
+        using var doc = J(await ForemanMcpTools.RequestProcessKill(_claude.Pid, "stop the other agent", http: AsCodex));
         Assert.False(doc.RootElement.GetProperty("executed").GetBoolean());
         Assert.Equal("operator_approval_required", doc.RootElement.GetProperty("status").GetString());
         Assert.DoesNotContain(_claude.Pid, _killed);
@@ -439,28 +450,41 @@ public sealed class CallerScopeToolTests : IDisposable
     }
 
     [Fact]
-    public void RequestProcessKill_StolenToken_Refused_EvenOnOwnTree()
+    public async System.Threading.Tasks.Task RequestProcessKill_StolenToken_Refused_EvenOnOwnTree()
     {
-        using var doc = J(ForemanMcpTools.RequestProcessKill(_codexChild.Pid, "x", http: AsCodexStolen));
+        using var doc = J(await ForemanMcpTools.RequestProcessKill(_codexChild.Pid, "x", http: AsCodexStolen));
         Assert.False(doc.RootElement.GetProperty("executed").GetBoolean());
         Assert.Equal("refused", doc.RootElement.GetProperty("status").GetString());
         Assert.Empty(_killed);
     }
 
     [Fact]
-    public void RequestProcessKill_Operator_MayKillAnyTrackedPid()
+    public async System.Threading.Tasks.Task RequestProcessKill_Operator_MayKillAnyTrackedPid()
     {
-        using var doc = J(ForemanMcpTools.RequestProcessKill(_claude.Pid, "operator cleanup", http: AsOperator));
+        using var doc = J(await ForemanMcpTools.RequestProcessKill(_claude.Pid, "operator cleanup", http: AsOperator));
         Assert.True(doc.RootElement.GetProperty("executed").GetBoolean());
         Assert.Contains(_claude.Pid, _killed);
     }
 
     [Fact]
-    public void RequestProcessKill_UnknownPid_NotFound()
+    public async System.Threading.Tasks.Task RequestProcessKill_UnknownPid_NotFound()
     {
-        using var doc = J(ForemanMcpTools.RequestProcessKill(123456, http: AsCodex));
+        using var doc = J(await ForemanMcpTools.RequestProcessKill(123456, http: AsCodex));
         Assert.Equal("not_found", doc.RootElement.GetProperty("status").GetString());
         Assert.Empty(_killed);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task RequestProcessKill_SynchronousTerminationFailure_WithdrawsExpectedMarker()
+    {
+        _state.KillProcessByPid = (_, _) => false;
+
+        using var doc = J(await ForemanMcpTools.RequestProcessKill(
+            _codexChild.Pid, "attempt that Windows refuses", http: AsCodex));
+
+        Assert.False(doc.RootElement.GetProperty("executed").GetBoolean());
+        Assert.Equal("kill_failed", doc.RootElement.GetProperty("status").GetString());
+        Assert.False(_state.ExpectedTerminations.WasExpected(_codexChild.Pid));
     }
 
     // ── LiveWeave driver gate: only the operator-chosen harness may drive the builder ────────────
@@ -475,7 +499,7 @@ public sealed class CallerScopeToolTests : IDisposable
     [Fact]
     public void LiveweaveCommand_ExplicitAnyDriver_AcceptsHarness()
     {
-        ForemanMcpTools.LiveweavePollCommands(driverHarness: "any", http: AsLiveweave);
+        _state.LiveWeave.SetDriver("any");
 
         using var doc = J(ForemanMcpTools.LiveweaveCommand("new_canvas", http: AsCodex));
         Assert.True(doc.RootElement.GetProperty("accepted").GetBoolean());
@@ -499,8 +523,7 @@ public sealed class CallerScopeToolTests : IDisposable
     [Fact]
     public void LiveweaveCommand_DriverSet_AcceptsChosen_RejectsOthers()
     {
-        // The LiveWeave extension declares codex as its driver (via poll).
-        ForemanMcpTools.LiveweavePollCommands(driverHarness: "codex", http: AsLiveweave);
+        _state.LiveWeave.SetDriver("codex");
 
         using var codex = J(ForemanMcpTools.LiveweaveCommand("new_canvas", http: AsCodex));
         Assert.True(codex.RootElement.GetProperty("accepted").GetBoolean());
@@ -522,19 +545,49 @@ public sealed class CallerScopeToolTests : IDisposable
     [Fact]
     public void LiveweavePoll_DriverChangedAfterEnqueue_DropsStaleCommand()
     {
-        ForemanMcpTools.LiveweavePollCommands(driverHarness: "claude-code", http: AsLiveweave);
+        _state.LiveWeave.SetDriver("claude-code");
         using var enq = J(ForemanMcpTools.LiveweaveCommand("new_canvas", http: AsClaude));
         Assert.True(enq.RootElement.GetProperty("accepted").GetBoolean());
         var cmdId = enq.RootElement.GetProperty("commandId").GetString();
 
         // Operator switches the driver to codex — the already-queued claude command must not be delivered…
-        ForemanMcpTools.LiveweavePollCommands(driverHarness: "codex", http: AsLiveweave);
+        _state.LiveWeave.SetDriver("codex");
         using var poll = J(ForemanMcpTools.LiveweavePollCommands(driverHarness: "codex", http: AsLiveweave));
         Assert.Empty(poll.RootElement.GetProperty("commands").EnumerateArray());
 
         // …and is marked failed, so it doesn't sit pending forever.
         using var res = J(ForemanMcpTools.LiveweaveCommandResult(cmdId!));
         Assert.Equal("failed", res.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void LiveweavePoll_ExtensionReportedDriverCannotSwitchBrokerAuthority()
+    {
+        _state.LiveWeave.SetDriver("codex");
+        using var enq = J(ForemanMcpTools.LiveweaveCommand("new_canvas", http: AsCodex));
+
+        using var poll = J(ForemanMcpTools.LiveweavePollCommands(
+            driverHarness: "claude-code", http: AsLiveweave));
+
+        Assert.True(poll.RootElement.GetProperty("driverMismatch").GetBoolean());
+        Assert.Equal("codex", poll.RootElement.GetProperty("driver").GetString());
+        Assert.Single(poll.RootElement.GetProperty("commands").EnumerateArray());
+        Assert.Equal("codex", _state.LiveWeave.Driver);
+    }
+
+    [Fact]
+    public void LiveweaveResult_CommandIdCapabilitySurvivesAuthenticatedHarnessHandoff()
+    {
+        _state.LiveWeave.SetDriver("claude-code");
+        using var enq = J(ForemanMcpTools.LiveweaveCommand("new_canvas", http: AsClaude));
+        var id = enq.RootElement.GetProperty("commandId").GetString()!;
+        _ = ForemanMcpTools.LiveweavePollCommands(http: AsLiveweave);
+        _ = ForemanMcpTools.LiveweaveCompleteCommand(id, ok: true, resultJson: "{\"revision\":2}", http: AsLiveweave);
+
+        using var handedOff = J(ForemanMcpTools.LiveweaveCommandResult(id, http: AsCodex));
+
+        Assert.True(handedOff.RootElement.GetProperty("found").GetBoolean());
+        Assert.Equal("completed", handedOff.RootElement.GetProperty("status").GetString());
     }
 
     // ── Extension ingress is untrusted: sanitise/scope/cap everything the extension sends ─────────
@@ -545,7 +598,7 @@ public sealed class CallerScopeToolTests : IDisposable
         ForemanMcpTools.LiveweavePollCommands(
             tabInfoJson: $"{{\"url\":\"https://x.com/?token={ghp}\",\"title\":\"hi\",\"extensionVersion\":\"0.4.1\",\"canvasConnected\":true,\"evil\":\"DROPME\"}}",
             http: AsLiveweave);
-        using var status = J(ForemanMcpTools.LiveweaveStatus());
+        using var status = J(ForemanMcpTools.LiveweaveStatus(http: AsLiveweave));
         var raw = status.RootElement.GetRawText();
         Assert.DoesNotContain(ghp, raw);       // secret-shaped text in the URL is redacted
         Assert.DoesNotContain("DROPME", raw);  // unknown fields are dropped, not stored
@@ -558,7 +611,7 @@ public sealed class CallerScopeToolTests : IDisposable
     {
         var big = "{\"url\":\"" + new string('a', 5000) + "\"}";
         ForemanMcpTools.LiveweavePollCommands(tabInfoJson: big, http: AsLiveweave);
-        using var status = J(ForemanMcpTools.LiveweaveStatus());
+        using var status = J(ForemanMcpTools.LiveweaveStatus(http: AsLiveweave));
         Assert.Equal(System.Text.Json.JsonValueKind.Null, status.RootElement.GetProperty("tab").ValueKind);
     }
 
@@ -578,7 +631,10 @@ public sealed class CallerScopeToolTests : IDisposable
         const string ghp = "ghp_0123456789abcdefghij0123456789abcdef";
         using var enq = J(ForemanMcpTools.LiveweaveCommand("scan", http: AsOperator));
         var id = enq.RootElement.GetProperty("commandId").GetString();
-        ForemanMcpTools.LiveweaveCompleteCommand(id!, ok: true, resultJson: $"{{\"leaked\":\"{ghp}\"}}", http: AsLiveweave);
+        _ = ForemanMcpTools.LiveweavePollCommands(http: AsLiveweave);
+        using var completed = J(ForemanMcpTools.LiveweaveCompleteCommand(
+            id!, ok: true, resultJson: $"{{\"leaked\":\"{ghp}\"}}", http: AsLiveweave));
+        Assert.True(completed.RootElement.GetProperty("accepted").GetBoolean());
         using var res = J(ForemanMcpTools.LiveweaveCommandResult(id!));
         Assert.DoesNotContain(ghp, res.RootElement.GetRawText());   // result is redacted before it reaches the driver
     }
@@ -743,7 +799,7 @@ public sealed class CallerScopeToolTests : IDisposable
             "cursor",
             "sys",
             "body",
-            "High\n" + ghp,
+            "High\nInjected",
             "reason\n" + ghp,
             http: AsCodex));
 
@@ -762,7 +818,10 @@ public sealed class CallerScopeToolTests : IDisposable
         using var enq = J(ForemanMcpTools.LiveweaveCommand("scan", http: AsOperator));
         var id = enq.RootElement.GetProperty("commandId").GetString();
 
-        ForemanMcpTools.LiveweaveCompleteCommand(id!, ok: true, resultJson: "{\"title\":\"Sugar Loop\",\"htmlLength\":123}", http: AsLiveweave);
+        _ = ForemanMcpTools.LiveweavePollCommands(http: AsLiveweave);
+        using var completed = J(ForemanMcpTools.LiveweaveCompleteCommand(
+            id!, ok: true, resultJson: "{\"title\":\"Sugar Loop\",\"htmlLength\":123}", http: AsLiveweave));
+        Assert.True(completed.RootElement.GetProperty("accepted").GetBoolean());
 
         using var res = J(ForemanMcpTools.LiveweaveCommandResult(id!));
         Assert.Equal("completed", res.RootElement.GetProperty("status").GetString());

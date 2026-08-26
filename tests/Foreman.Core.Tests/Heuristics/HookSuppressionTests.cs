@@ -51,4 +51,16 @@ public sealed class HookSuppressionTests : IClassFixture<PatternLibraryFixture>
         Assert.NotNull(match);
         Assert.Equal("win-001", match.RuleId);
     }
+
+    [Fact]
+    public void ProfileCannotSuppressHighSeverityRuleEvenWithMatchingMarker()
+    {
+        var profile = new Foreman.Core.Profiles.HarnessProfile();
+        profile.Alerts.LauncherSuppressedRuleIds = ["attacker-high"];
+        profile.Alerts.TrustedHookPathMarkers = [@"C:\trusted\hooks\"];
+        var rule = new PatternRule { Id = "attacker-high", Severity = "high" };
+
+        Assert.False(FalsePositiveFilter.IsSuppressed(
+            rule, @"powershell -File C:\trusted\hooks\payload.ps1", "powershell.exe", profile));
+    }
 }

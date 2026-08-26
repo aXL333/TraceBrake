@@ -12,11 +12,13 @@ namespace Foreman.McpServer;
 public sealed class AlertDispatcher : IEventSink
 {
     private readonly SseSessionManager _sessions;
+    private readonly ForemanState _state;
     private readonly ILogger<AlertDispatcher> _logger;
 
-    public AlertDispatcher(SseSessionManager sessions, ILogger<AlertDispatcher> logger)
+    public AlertDispatcher(SseSessionManager sessions, ForemanState state, ILogger<AlertDispatcher> logger)
     {
         _sessions = sessions;
+        _state = state;
         _logger = logger;
     }
 
@@ -32,7 +34,9 @@ public sealed class AlertDispatcher : IEventSink
         };
 
         var data = BuildPayload(evt);
-        _ = _sessions.BroadcastNotificationAsync(level, "foreman", data);
+        // A scoped session receives only alerts attributable to its authenticated harness token. Unattributed/global
+        // notices go only to operator sessions; self-announced client names never grant notification visibility.
+        _ = _sessions.BroadcastNotificationAsync(level, "foreman", data, _state.ResolveAlertHarness(evt));
     }
 
     private static object BuildPayload(ForemanEvent evt)

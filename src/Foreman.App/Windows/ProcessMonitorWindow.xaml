@@ -123,6 +123,8 @@
                 <ContextMenu>
                     <MenuItem Header="Request self-cleanup (via MCP)" Click="RequestCleanupClick"
                               ToolTip="Ask this harness to checkpoint its work, stop leftover child processes, and reply or exit. Polite request only — nothing is killed." />
+                    <MenuItem Header="End harness process tree…" Click="KillHarnessClick"
+                              ToolTip="Emergency stop: verify and terminate every process tree belonging to this harness. Unsaved work will be lost." />
                     <Separator />
                     <MenuItem Header="Check on VirusTotal" Click="VirusTotalClick" />
                     <MenuItem Header="Copy SHA-256"        Click="CopyHashClick" />

@@ -211,13 +211,13 @@ async function resolveTargetTab(args) {
 // the live tab host. All-or-nothing and fail-closed: if ANY token won't resolve, nothing is filled and the error
 // carries NO secret. The resolved values exist only in the returned string (typed into the page, then dropped) —
 // they are never logged, never put in cu_complete_action, never returned to the submitting agent.
-async function resolveVaultTokens(actionId, value, liveOrigin, argumentKey, refs = vaultRefs(value)) {
+async function resolveVaultTokens(actionId, executionToken, value, liveOrigin, argumentKey, refs = vaultRefs(value)) {
     const tokens = refs.map((r) => r.token);
     if (tokens.length === 0) return { ok: true, value };          // plain text — no vault round-trip
     if (!actionId) return { ok: false, error: 'Vault reference present but the action has no id to bind to.' };
     const map = new Map();
     for (const tok of tokens) {
-        const r = await mcpCall('cu_resolve_vault', { actionId, reference: tok, liveOrigin, argumentKey });
+        const r = await mcpCall('cu_resolve_vault', { actionId, executionToken, reference: tok, liveOrigin, argumentKey });
         if (!r || r.ok !== true || typeof r.value !== 'string')
             return { ok: false, error: (r && r.reason) || 'A vault reference could not be resolved.' };
         map.set(tok, r.value);
@@ -244,6 +244,23 @@ async function fillGate(tab) {
     if (!granted)
         return { ok: false, error: `TraceBrake isn't allowed to act on ${u.hostname}. Open the side panel and click "Allow TraceBrake on the current site" first.` };
     return { ok: true, host: u.hostname, origin: u.origin };
+}
+
+// A claimed action is not standing authority. Panic, expiry, driver revocation, or an operator decision can void its
+// owner-bound lease after polling. Fail CLOSED on any missing/ambiguous response and re-check both global panic and
+// this exact action lease immediately before every browser effect.
+async function ensureCuActionLive(act) {
+    const actionId = typeof act?.actionId === 'string' ? act.actionId.trim() : '';
+    const executionToken = typeof act?.executionToken === 'string' ? act.executionToken.trim() : '';
+    if (!actionId || !/^[0-9a-f]{64}$/i.test(executionToken))
+        return { ok: false, error: 'Action has no valid execution lease.' };
+    const panic = await mcpCall('computer_use_status');
+    if (!panic || panic.halted !== false)
+        return { ok: false, error: panic?.halted ? 'Computer use was halted by the operator.' : 'Could not verify panic state.' };
+    const status = await mcpCall('cu_action_status', { actionId, executionToken });
+    if (!status || status.found !== true || String(status.state || '').toLowerCase() !== 'executing')
+        return { ok: false, error: (status && status.reason) || 'Action execution lease is no longer live.' };
+    return { ok: true };
 }
 
 // ── Functions injected into the page (ISOLATED world; must be fully self-contained, no closures) ──
@@ -375,6 +392,8 @@ async function executeCuAction(act) {
             // Defense-in-depth even though TraceBrake already audited the action upstream.
             if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'navigate requires an http(s) url.' };
             try { new URL(url); } catch { return { ok: false, error: 'navigate requires a valid url.' }; }
+            const live = await ensureCuActionLive(act);
+            if (!live.ok) return live;
             const tab = await chrome.tabs.create({ url, active: true });
             return { ok: true, result: { tabId: tab.id ?? null, url } };
         }
@@ -411,6 +430,8 @@ async function executeCuAction(act) {
             try { new URL(url); } catch { return { ok: false, error: 'goto requires a valid url.' }; }
             const tabId = await resolveTargetTab(args);
             if (tabId == null) return { ok: false, error: 'No tab to navigate.' };
+            const live = await ensureCuActionLive(act);
+            if (!live.ok) return live;
             const updated = await chrome.tabs.update(tabId, { url });
             return { ok: true, result: { tabId: updated?.id ?? tabId, url } };
         }
@@ -419,6 +440,8 @@ async function executeCuAction(act) {
             // Tab history navigation via the tabs API (no scripting). Back from a fresh tab is a no-op (no history).
             const tabId = await resolveTargetTab(args);
             if (tabId == null) return { ok: false, error: 'No tab.' };
+            const live = await ensureCuActionLive(act);
+            if (!live.ok) return live;
             if (verb === 'back') await chrome.tabs.goBack(tabId);
             else await chrome.tabs.goForward(tabId);
             return { ok: true, result: { tabId, action: verb } };
@@ -445,11 +468,15 @@ async function executeCuAction(act) {
                     return { ok: false, error: (checked && checked.error) || 'Vault fill target could not be verified.' };
             }
             // Resolve {{vault:...}} at the last moment, bound to this action + the live host (all-or-nothing).
-            const resolved = await resolveVaultTokens(act.actionId, rawValue, gate.host, argumentKey, refs);
+            const resolved = await resolveVaultTokens(act.actionId, act.executionToken, rawValue, gate.host, argumentKey, refs);
             if (!resolved.ok) return { ok: false, error: resolved.error };   // carries no secret
             let value = resolved.value;
             let res;
-            try { [res] = await chrome.scripting.executeScript({ target: { tabId }, func: injFill, args: [selector, value, fillPolicy] }); }
+            try {
+                const live = await ensureCuActionLive(act);
+                if (!live.ok) return live;
+                [res] = await chrome.scripting.executeScript({ target: { tabId }, func: injFill, args: [selector, value, fillPolicy] });
+            }
             finally { value = ''; }   // drop the plaintext from the worker as soon as it's handed to the page
             const out = res && res.result;
             if (!out || !out.ok) return { ok: false, error: (out && out.error) || 'Could not fill the field.' };
@@ -463,6 +490,8 @@ async function executeCuAction(act) {
             const tab = await chrome.tabs.get(tabId).catch(() => null);
             const gate = await fillGate(tab);
             if (!gate.ok) return gate;
+            const live = await ensureCuActionLive(act);
+            if (!live.ok) return live;
             const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: injClick, args: [selector] });
             const out = res && res.result;
             if (!out || !out.ok) return { ok: false, error: (out && out.error) || 'Could not click the element.' };
@@ -477,6 +506,8 @@ async function executeCuAction(act) {
             const dx = Number(args.dx ?? 0) || 0;
             const dy = Number(args.dy ?? args.amount ?? 0) || 0;
             const selector = typeof args.selector === 'string' && args.selector ? args.selector : null;
+            const live = await ensureCuActionLive(act);
+            if (!live.ok) return live;
             const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: injScroll, args: [selector, dx, dy] });
             const out = res && res.result;
             if (!out || !out.ok) return { ok: false, error: (out && out.error) || 'Could not scroll.' };
@@ -491,7 +522,9 @@ async function executeCuAction(act) {
 
 async function pollCu() {
     if (!cfg.token || !connected || lastMcpAuthProblem) return;
-    const batch = await mcpCall('cu_poll_actions', { limit: 5 });
+    // One claim per poll bounds the unavoidable check→browser-API race to the single action already starting. A panic
+    // can therefore never leave four more pre-claimed side effects sitting in this worker's batch.
+    const batch = await mcpCall('cu_poll_actions', { limit: 1 });
     const actions = Array.isArray(batch?.actions) ? batch.actions : [];
     for (const act of actions) {
         let result;
@@ -501,11 +534,15 @@ async function pollCu() {
         if (String(act.modality || '').toLowerCase() !== 'browser') {
             result = { ok: false, error: 'Browser extension cannot execute non-browser actions.' };
         } else {
-            try { result = await executeCuAction(act); }
+            try {
+                const live = await ensureCuActionLive(act);
+                result = live.ok ? await executeCuAction(act) : live;
+            }
             catch (e) { result = { ok: false, error: String(e?.message || e) }; }
         }
         await mcpCall('cu_complete_action', {
             actionId: act.actionId,
+            executionToken: act.executionToken,
             ok: !!result.ok,
             resultJson: result.ok ? JSON.stringify(result.result ?? result) : null,
             error: result.ok ? null : (result.error || 'Browser-use action failed.'),

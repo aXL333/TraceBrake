@@ -115,6 +115,8 @@ public sealed class McpAuthToken
         // Normalize to lower-case so the id carried in the token matches the MAC (computed over the
         // lower-cased id) and the harness ids used everywhere else (claude-code, codex, custom:foo.exe).
         var id = (harnessId ?? string.Empty).Trim().ToLowerInvariant();
+        if (!IsPlausibleHarnessId(id))
+            throw new ArgumentException("Harness id must be 1-64 lowercase ASCII letters/digits or '.', '-', '_', ':'.", nameof(harnessId));
         var idB64 = Base64Url(Encoding.UTF8.GetBytes(id));
         return $"{HarnessTokenPrefix}{idB64}.{ComputeMac(Value, id)}";
     }
@@ -126,7 +128,7 @@ public sealed class McpAuthToken
     /// </summary>
     public McpAuthResult Authenticate(string? presented)
     {
-        if (string.IsNullOrEmpty(presented)) return McpAuthResult.Fail;
+        if (string.IsNullOrEmpty(presented) || presented.Length > 512) return McpAuthResult.Fail;
 
         // Operator: raw install secret (in-memory or current on-disk — stale-instance safe).
         if (FixedEquals(presented, Value) || FixedEquals(presented, ReadPersistedToken()))
@@ -141,7 +143,7 @@ public sealed class McpAuthToken
                 string id;
                 try { id = Encoding.UTF8.GetString(Base64UrlDecode(parts[1])); }
                 catch { return McpAuthResult.Fail; }
-                if (string.IsNullOrEmpty(id)) return McpAuthResult.Fail;
+                if (!IsPlausibleHarnessId(id)) return McpAuthResult.Fail;
 
                 var mac = parts[2];
                 var disk = ReadPersistedToken();
@@ -235,9 +237,11 @@ TraceBrake's MCP server requires a bearer token. It listens on:
     http://localhost:{{port}}/mcp        (tools - requires the token)
     http://localhost:{{port}}/health     (liveness - open)
 
-Your token is in the file 'mcp.token' next to this file - it is readable only by you.
-Add it as an Authorization header in your harness's MCP client config, replacing <TOKEN>
-with the contents of mcp.token.
+The file 'mcp.token' is the raw OPERATOR/RECOVERY secret. Never paste it into an AI harness,
+browser extension, chat, or agent config: it is intentionally more privileged than a harness token.
+
+Connect an agent from TraceBrake's "Connect agent" UI. TraceBrake mints a scoped token bound to
+that one harness. In the examples below, <SCOPED_TOKEN_FROM_CONNECT_AGENT> means that minted token.
 
 Claude Code JSON example:
 
@@ -246,7 +250,7 @@ Claude Code JSON example:
     "foreman": {
       "type": "http",
       "url": "http://localhost:{{port}}/mcp",
-      "headers": { "Authorization": "Bearer <TOKEN>" }
+      "headers": { "Authorization": "Bearer <SCOPED_TOKEN_FROM_CONNECT_AGENT>" }
     }
   }
 }
@@ -255,11 +259,12 @@ Codex TOML example:
 
 [mcp_servers.foreman]
 url = "http://localhost:{{port}}/mcp"
-http_headers = { Authorization = "Bearer <TOKEN>" }
+http_headers = { Authorization = "Bearer <SCOPED_TOKEN_FROM_CONNECT_AGENT>" }
 enabled = true
 
-Keep mcp.token private - anyone who can read it can call TraceBrake's MCP tools.
-Delete mcp.token to force a new token (you must then update every client config).
+Keep mcp.token private. It is for local operator recovery/rotation only.
+Delete mcp.token to rotate the install secret, then reconnect every agent from the UI to re-issue
+its scoped token.
 """;
         try { File.WriteAllText(_setupPath, snippet); }
         catch { /* best-effort */ }

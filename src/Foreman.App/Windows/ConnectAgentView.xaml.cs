@@ -16,7 +16,6 @@ namespace Foreman.App.Windows;
 public partial class ConnectAgentView : UserControl
 {
     private readonly int _port;
-    private readonly string _token;          // raw install token (operator/unscoped) — used for the generic path
     private readonly Func<string, string> _mint;   // mints a per-harness (scoped) token
     private readonly Func<IReadOnlyList<McpClientInfo>>? _getClients;
     private readonly Func<string>? _beginPairing;   // begins extension pairing, returns the on-screen code
@@ -26,7 +25,7 @@ public partial class ConnectAgentView : UserControl
     /// <summary>Reads/sets the mediated computer-use (cu_*) driver harness; wired by TrayController to the
     /// in-process CuBroker after construction. Empty/null = operator only, "*" = any harness.</summary>
     public Func<string?>? GetCuDriver { get; set; }
-    public Action<string?>? SetCuDriver { get; set; }
+    public Func<string?, Task<(bool Ok, string Reason)>>? SetCuDriver { get; set; }
 
     public ConnectAgentView(int port, string token, Func<IReadOnlyList<McpClientInfo>>? getClients,
                               Func<string, string>? mintToken = null, Func<string>? beginPairing = null,
@@ -34,8 +33,9 @@ public partial class ConnectAgentView : UserControl
                               Func<bool>? isLiveWeaveConnected = null)
     {
         _port = port;
-        _token = token;
-        _mint = mintToken ?? (_ => token);   // fall back to the install token if minting isn't wired
+        _ = token; // retained in the constructor ABI for callers; raw operator material is never rendered or reused
+        _mint = mintToken ?? throw new ArgumentNullException(nameof(mintToken),
+            "Scoped token minting is required; the raw install token is recovery-only.");
         _getClients = getClients;
         _beginPairing = beginPairing;
         _getRunningHarnessIds = getRunningHarnessIds;
@@ -80,11 +80,19 @@ public partial class ConnectAgentView : UserControl
 
     // Apply the ticked harnesses as the driver set. Joining with commas and reusing the single-string SetCuDriver
     // wire keeps the App/tray/MCP plumbing unchanged (CuBroker.SetDriver splits the list back out).
-    private void SetCuDriverClick(object sender, RoutedEventArgs e)
+    private async void SetCuDriverClick(object sender, RoutedEventArgs e)
     {
         var chosen = (CuDriverList.ItemsSource as IEnumerable<DriverChoice> ?? [])
             .Where(c => c.IsChecked).Select(c => c.Name).ToList();
-        SetCuDriver?.Invoke(string.Join(",", chosen));
+        if (SetCuDriver is { } setDriver)
+        {
+            var result = await setDriver(string.Join(",", chosen));
+            if (!result.Ok)
+            {
+                MessageBox.Show(result.Reason, "TraceBrake — Driver Unchanged",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
         RefreshCuDriver();
     }
 
@@ -116,6 +124,7 @@ public partial class ConnectAgentView : UserControl
     private string GeminiToken   => _mint("gemini-cli");
     private string LmStudioToken => _mint("lm-studio");
     private string T3Token       => _mint("t3-code");
+    private string GenericToken  => _mint("custom:mcp-client");
 
     private void Populate()
     {
@@ -129,13 +138,13 @@ public partial class ConnectAgentView : UserControl
         T3Box.Text = ClaudeMcpConnector.BuildClaudeConfigSnippet(_port, T3Token);   // T3 uses the underlying agent's mcpServers shape
         GenericBox.Text =
             $"URL:    {ClaudeMcpConnector.Url(_port)}\r\n" +
-            $"Header: Authorization: Bearer {_token}\r\n\r\n" +
+            $"Header: Authorization: Bearer {GenericToken}\r\n\r\n" +
             "Server entry (JSON):\r\n" +
-            ClaudeMcpConnector.BuildServerEntrySnippet(_port, _token);
+            ClaudeMcpConnector.BuildServerEntrySnippet(_port, GenericToken);
         TokenNote.Text =
-            "Claude Code and Codex each get their own scoped token (they can only see themselves in TraceBrake). " +
-            "The generic config above uses your full-access install token at %LocalAppData%\\TraceBrake\\mcp.token — " +
-            "keep it private. /health is open; /mcp requires a token.";
+            "Every config above uses a scoped per-harness token. The generic entry is scoped as " +
+            "'custom:mcp-client'. The raw mcp.token secret is operator/recovery-only and must never be pasted into " +
+            "an agent config. /health is open; /mcp requires a scoped token.";
         PopulateCuDriverChoices();
         RefreshConnected();
     }

@@ -50,4 +50,15 @@ public sealed class DepositCryptoTests
         var env = DepositCrypto.Encrypt(pub, "secret");
         Assert.Throws<NotSupportedException>(() => DepositCrypto.Decrypt(priv, env with { Version = 999 }));
     }
+
+    [Fact]
+    public void OversizedEncodedCiphertext_IsRejectedBeforeBase64Allocation()
+    {
+        var (_, priv) = DepositCrypto.GenerateKeyPair();
+        var env = new DepositCrypto.Envelope(1, "AA==", "AA==", "AA==",
+            new string('A', ((DepositCrypto.MaxCiphertextBytes + 2) / 3 * 4) + 4), "AA==");
+
+        var ex = Assert.Throws<FormatException>(() => DepositCrypto.Decrypt(priv, env));
+        Assert.Contains("ciphertext", ex.Message);
+    }
 }

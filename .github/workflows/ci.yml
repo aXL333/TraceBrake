@@ -11,7 +11,7 @@ jobs:
     name: Build & test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -30,8 +30,16 @@ jobs:
             node --check $file.FullName
             if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $($file.FullName)" }
           }
-          node --test extension-liveweave/tests/project-model.test.mjs
+          $testPaths = @(Get-ChildItem extension-liveweave/tests -Recurse -File -Filter '*.test.mjs' |
+            Sort-Object FullName |
+            ForEach-Object { $_.FullName })
+          if ($testPaths.Count -eq 0) { throw "No LiveWeave tests were discovered." }
+          & node --test @testPaths
           if ($LASTEXITCODE -ne 0) { throw "LiveWeave tests failed." }
+          node --test scripts/Test-ExtensionCuPanic.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Browser CU panic/lease contract tests failed." }
+          node --test scripts/Test-ExtensionVaultPolicy.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Browser vault policy bypass tests failed." }
 
       - name: Build
         run: dotnet build Foreman.slnx -c Release --no-restore

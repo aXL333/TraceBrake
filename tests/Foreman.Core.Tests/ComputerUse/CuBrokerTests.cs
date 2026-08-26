@@ -4,6 +4,8 @@ namespace Foreman.Core.Tests.ComputerUse;
 
 public sealed class CuBrokerTests
 {
+    private const string BrowserExecutor = "test-browser-executor";
+
     private sealed class FixedAuditor(CuVerdict verdict) : IAuditor
     {
         public Task<CuVerdict> JudgeAsync(CuAction a, CuContext c, CancellationToken ct = default) => Task.FromResult(verdict);
@@ -20,6 +22,9 @@ public sealed class CuBrokerTests
 
     private static CuAction ActWith(string verb, Dictionary<string, string> args) =>
         new(CuModality.Browser, verb, args, ByHarness: "operator");
+
+    private static IReadOnlyList<CuBrokerItem> Claim(CuBroker broker, int limit = 10) =>
+        broker.Claim(limit, CuModality.Browser, BrowserExecutor);
 
     [Fact]
     public async Task Submit_Allow_BecomesApproved()
@@ -40,7 +45,7 @@ public sealed class CuBrokerTests
         Assert.True(b.ApproveHeld(item.ActionId).Ok);
         Assert.Equal(CuActionState.Approved, b.Get(item.ActionId)!.State);
 
-        var claimed = b.Claim(10);
+        var claimed = Claim(b);
         Assert.Single(claimed);
         Assert.Equal(CuActionState.Executing, claimed[0].State);
     }
@@ -52,7 +57,7 @@ public sealed class CuBrokerTests
         var item = await b.SubmitAsync(Act(), new CuContext());
         Assert.True(b.RejectHeld(item.ActionId).Ok);
         Assert.Equal(CuActionState.Rejected, b.Get(item.ActionId)!.State);
-        Assert.Empty(b.Claim(10));
+        Assert.Empty(Claim(b));
     }
 
     [Fact]
@@ -61,7 +66,7 @@ public sealed class CuBrokerTests
         var b = new CuBroker(new FixedAuditor(CuVerdict.Block("test", "bad")));
         var item = await b.SubmitAsync(Act(), new CuContext());
         Assert.Equal(CuActionState.Blocked, item.State);
-        Assert.Empty(b.Claim(10));
+        Assert.Empty(Claim(b));
     }
 
     [Theory]
@@ -88,8 +93,9 @@ public sealed class CuBrokerTests
     {
         var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")));
         var item = await b.SubmitAsync(Act(), new CuContext());
-        Assert.Single(b.Claim(10));
-        Assert.True(b.Complete(item.ActionId, ok: true, result: "done", error: null).Ok);
+        var executing = Assert.Single(Claim(b));
+        Assert.True(b.Complete(item.ActionId, ok: true, result: "done", error: null,
+            CuModality.Browser, BrowserExecutor, executing.ExecutionToken!).Ok);
         Assert.Equal(CuActionState.Completed, b.Get(item.ActionId)!.State);
     }
 
@@ -98,7 +104,7 @@ public sealed class CuBrokerTests
     {
         var b = new CuBroker(new FixedAuditor(CuVerdict.Hold("t", "h")));
         await b.SubmitAsync(Act(), new CuContext());
-        Assert.Empty(b.Claim(10));   // Held is not claimable
+        Assert.Empty(Claim(b));   // Held is not claimable
     }
 
     [Fact]
@@ -115,7 +121,7 @@ public sealed class CuBrokerTests
         var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")), isHalted: () => true);
         var item = await b.SubmitAsync(Act(), new CuContext());
         Assert.Equal(CuActionState.Blocked, item.State);
-        Assert.Empty(b.Claim(10));
+        Assert.Empty(Claim(b));
     }
 
     [Fact]
@@ -124,7 +130,7 @@ public sealed class CuBrokerTests
         var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")));   // no driver set => operator only
         var item = await b.SubmitAsync(Act(byHarness: "y"), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);   // audit clears it...
-        Assert.Empty(b.Claim(10));                          // ...but the driver re-check rejects it
+        Assert.Empty(Claim(b));                          // ...but the driver re-check rejects it
         Assert.Equal(CuActionState.Rejected, b.Get(item.ActionId)!.State);
     }
 
@@ -134,7 +140,7 @@ public sealed class CuBrokerTests
         var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")));
         b.SetDriver("y");
         var item = await b.SubmitAsync(Act(byHarness: "y"), new CuContext());
-        var claimed = b.Claim(10);
+        var claimed = Claim(b);
         Assert.Single(claimed);
         Assert.Equal(CuActionState.Executing, claimed[0].State);
     }
@@ -195,6 +201,20 @@ public sealed class CuBrokerTests
     }
 
     [Fact]
+    public void DriverPersisterFailure_DoesNotGrantOrRevokeLiveAuthority()
+    {
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("t")));
+        b.SetDriver("codex");
+        b.DriverPersister = _ => throw new IOException("guardian unavailable");
+
+        var change = b.SetDriver("claude-code");
+
+        Assert.False(change.Ok);
+        Assert.True(b.CanDrive("codex", false));
+        Assert.False(b.CanDrive("claude-code", false));
+    }
+
+    [Fact]
     public void SetDrivers_PreservesPinnedAttentionTab()
     {
         var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("t")));
@@ -205,6 +225,41 @@ public sealed class CuBrokerTests
 
         Assert.Equal("572647869", b.AttentionTab);
         Assert.True(b.CanDrive("codex", false));
+    }
+
+    [Fact]
+    public void Drivers_ReturnsSnapshotThatCannotMutateLiveAuthority()
+    {
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("t")));
+        b.SetDrivers(["codex"]);
+
+        var exposed = Assert.IsType<string[]>(b.Drivers);
+        exposed[0] = "attacker";
+
+        Assert.True(b.CanDrive("codex", false));
+        Assert.False(b.CanDrive("attacker", false));
+    }
+
+    [Fact]
+    public async Task SetDrivers_RevokesRemovedDriversExecutingLease_ButKeepsRetainedDriverWork()
+    {
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("t")));
+        b.SetDrivers(["codex", "claude-code"]);
+        var codex = await b.SubmitAsync(Act(byHarness: "codex"), new CuContext("codex"));
+        var claimed = Assert.Single(b.Claim(1, CuModality.Browser, BrowserExecutor));
+        Assert.Equal(codex.ActionId, claimed.ActionId);
+        // Submit the retained driver's action only after the old driver's lease is active. This makes the
+        // regression deterministic even on clocks whose DateTimeOffset resolution gives adjacent submissions
+        // the same CreatedAt value.
+        var claude = await b.SubmitAsync(Act(byHarness: "claude-code"), new CuContext("claude-code"));
+
+        b.SetDrivers(["claude-code"]);
+
+        Assert.Equal(CuActionState.Rejected, b.Get(codex.ActionId)!.State);
+        Assert.False(b.ValidateExecution(codex.ActionId, CuModality.Browser,
+            BrowserExecutor, claimed.ExecutionToken!).Ok);
+        Assert.Equal(CuActionState.Approved, b.Get(claude.ActionId)!.State);
+        Assert.Equal(claude.ActionId, Assert.Single(Claim(b)).ActionId);
     }
 
     // ── Pinned shared-attention excursion gate ───────────────────────────────────
@@ -270,7 +325,7 @@ public sealed class CuBrokerTests
         var item = await b.SubmitAsync(ActWith("goto", new() { ["tabId"] = "100", ["url"] = "https://x" }), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);   // on-pin at submit
         b.SetAttention("200");                               // operator moves the pin (TOCTOU)
-        Assert.Empty(b.Claim(10));                           // delivery re-gate holds it...
+        Assert.Empty(Claim(b));                           // delivery re-gate holds it...
         Assert.Equal(CuActionState.Held, b.Get(item.ActionId)!.State);   // ...instead of running off-focus
     }
 
@@ -281,7 +336,7 @@ public sealed class CuBrokerTests
         var item = await b.SubmitAsync(ActWith("goto", new() { ["tabId"] = "500", ["url"] = "https://evil" }), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);   // no pin yet -> approved
         b.SetAttention("742");                               // operator pins a different tab afterwards
-        Assert.Empty(b.Claim(10));
+        Assert.Empty(Claim(b));
         Assert.Equal(CuActionState.Held, b.Get(item.ActionId)!.State);   // off-focus change caught at delivery
     }
 
@@ -293,7 +348,7 @@ public sealed class CuBrokerTests
         var item = await b.SubmitAsync(ActWith("goto", new() { ["tabId"] = "200", ["url"] = "https://x" }), new CuContext());
         Assert.Equal(CuActionState.Held, item.State);        // off-pin -> held at submit
         Assert.True(b.ApproveHeld(item.ActionId).Ok);        // operator approves the excursion
-        var claimed = b.Claim(10);
+        var claimed = Claim(b);
         Assert.Single(claimed);                              // delivered, NOT re-held into a loop
         Assert.Equal(CuActionState.Executing, claimed[0].State);
     }
@@ -305,7 +360,7 @@ public sealed class CuBrokerTests
         b.SetAttention("100");
         var item = await b.SubmitAsync(ActWith("goto", new() { ["url"] = "https://x" }), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);
-        var claimed = b.Claim(10);
+        var claimed = Claim(b);
         Assert.Single(claimed);
         Assert.Equal("100", claimed[0].Action.Arg("tabId"));   // pin stamped so the executor can't divert to active
     }
@@ -328,7 +383,7 @@ public sealed class CuBrokerTests
         b.SetAttention("100");
         var item = await b.SubmitAsync(ActWith("goto", new() { ["tabId"] = "200", ["url"] = "https://x", ["justification"] = "checking docs, will return" }), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);
-        Assert.Single(b.Claim(10));   // delivery re-gate honors the justified override too
+        Assert.Single(Claim(b));   // delivery re-gate honors the justified override too
     }
 
     [Fact]
@@ -347,5 +402,157 @@ public sealed class CuBrokerTests
         b.SetAttention("100");
         var item = await b.SubmitAsync(ActWith("goto", new() { ["tabId"] = "200", ["url"] = "https://x", ["justification"] = "whatever" }), new CuContext());
         Assert.Equal(CuActionState.Held, item.State);   // override off -> always held, justification or not
+    }
+
+    [Fact]
+    public async Task Complete_RequiresExecutingStateExactModalityOwnerAndLease()
+    {
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Hold("test", "review")));
+        var item = await b.SubmitAsync(Act(), new CuContext());
+        var fakeLease = new string('0', 64);
+
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Browser, BrowserExecutor, fakeLease).Ok); // Held cannot self-complete
+        Assert.True(b.ApproveHeld(item.ActionId).Ok);
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Browser, BrowserExecutor, fakeLease).Ok); // Approved must be claimed first
+
+        var executing = Assert.Single(Claim(b));
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Android, BrowserExecutor, executing.ExecutionToken!).Ok);
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Browser, "sibling-executor", executing.ExecutionToken!).Ok);
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Browser, BrowserExecutor, fakeLease).Ok);
+        Assert.Equal(CuActionState.Executing, b.Get(item.ActionId)!.State);
+
+        Assert.True(b.Complete(item.ActionId, true, "done", null,
+            CuModality.Browser, BrowserExecutor, executing.ExecutionToken!).Ok);
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Browser, BrowserExecutor, executing.ExecutionToken!).Ok);
+    }
+
+    [Fact]
+    public async Task PanicRejectsClaimedBrowserActionAndVoidsItsLease()
+    {
+        var halted = false;
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")), () => halted);
+        var item = await b.SubmitAsync(Act(), new CuContext());
+        var executing = Assert.Single(Claim(b));
+
+        halted = true;
+        b.OnPanicHalt();
+
+        Assert.Equal(CuActionState.Rejected, b.Get(item.ActionId)!.State);
+        Assert.False(b.ValidateExecution(item.ActionId, CuModality.Browser,
+            BrowserExecutor, executing.ExecutionToken!).Ok);
+        Assert.False(b.Complete(item.ActionId, true, null, null,
+            CuModality.Browser, BrowserExecutor, executing.ExecutionToken!).Ok);
+    }
+
+    [Fact]
+    public async Task PendingQueueHasPerHarnessAndGlobalHardCaps()
+    {
+        var options = new CuBrokerOptions
+        {
+            MaxItems = 8,
+            MaxNonTerminalItems = 3,
+            MaxNonTerminalPerHarness = 2,
+        };
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Hold("test", "review")), options: options);
+
+        Assert.Equal(CuActionState.Held, (await b.SubmitAsync(Act(byHarness: "codex"), new CuContext("codex"))).State);
+        Assert.Equal(CuActionState.Held, (await b.SubmitAsync(Act(byHarness: "codex"), new CuContext("codex"))).State);
+        var perHarnessOverflow = await b.SubmitAsync(Act(byHarness: "codex"), new CuContext("codex"));
+        Assert.Equal(CuActionState.Blocked, perHarnessOverflow.State);
+        Assert.Contains("this harness", perHarnessOverflow.Error!, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal(CuActionState.Held, (await b.SubmitAsync(Act(byHarness: "claude-code"), new CuContext("claude-code"))).State);
+        var globalOverflow = await b.SubmitAsync(Act(byHarness: "gemini-cli"), new CuContext("gemini-cli"));
+        Assert.Equal(CuActionState.Blocked, globalOverflow.State);
+        Assert.Contains("queue is full", globalOverflow.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.True(b.ItemCount <= options.MaxItems);
+    }
+
+    [Fact]
+    public async Task StaleHeldApprovedAndExecutingActionsExpireFailClosed()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 0, 0, 0, TimeSpan.Zero);
+        var options = new CuBrokerOptions
+        {
+            AuditingTtl = TimeSpan.FromMinutes(1),
+            HeldTtl = TimeSpan.FromMinutes(1),
+            ApprovedTtl = TimeSpan.FromMinutes(1),
+            ExecutingTtl = TimeSpan.FromMinutes(1),
+        };
+
+        var heldBroker = new CuBroker(new FixedAuditor(CuVerdict.Hold("test", "review")),
+            options: options, utcNow: () => now);
+        var held = await heldBroker.SubmitAsync(Act(), new CuContext());
+        now += TimeSpan.FromMinutes(2);
+        Assert.False(heldBroker.ApproveHeld(held.ActionId).Ok);
+        Assert.Equal(CuActionState.Rejected, heldBroker.Get(held.ActionId)!.State);
+
+        var approvedBroker = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")),
+            options: options, utcNow: () => now);
+        var approved = await approvedBroker.SubmitAsync(Act(), new CuContext());
+        now += TimeSpan.FromMinutes(2);
+        Assert.Empty(Claim(approvedBroker));
+        Assert.Equal(CuActionState.Rejected, approvedBroker.Get(approved.ActionId)!.State);
+
+        var executingBroker = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")),
+            options: options, utcNow: () => now);
+        var executingAction = await executingBroker.SubmitAsync(Act(), new CuContext());
+        var executing = Assert.Single(Claim(executingBroker));
+        now += TimeSpan.FromMinutes(2);
+        Assert.False(executingBroker.ValidateExecution(executingAction.ActionId, CuModality.Browser,
+            BrowserExecutor, executing.ExecutionToken!).Ok);
+        Assert.Equal(CuActionState.Rejected, executingBroker.Get(executingAction.ActionId)!.State);
+    }
+
+    [Fact]
+    public async Task AdmissionSnapshotsMutableArgumentsBeforeAuditAndExecution()
+    {
+        var args = new Dictionary<string, string> { ["selector"] = "#approved" };
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")));
+        var item = await b.SubmitAsync(new CuAction(CuModality.Browser, "click", args, ByHarness: "operator"),
+            new CuContext());
+
+        args["selector"] = "#attacker-swapped";
+
+        var executing = Assert.Single(Claim(b));
+        Assert.Equal("#approved", executing.Action.Arg("selector"));
+        Assert.Equal("#approved", b.Get(item.ActionId)!.Action.Arg("selector"));
+    }
+
+    [Fact]
+    public async Task DuplicateCallerActionIdCannotOverwriteExistingAction()
+    {
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")));
+        var first = await b.SubmitAsync(Act() with { ActionId = "same-action" }, new CuContext());
+        var duplicate = await b.SubmitAsync(Act("type") with { ActionId = "same-action" }, new CuContext());
+
+        Assert.Equal(CuActionState.Approved, first.State);
+        Assert.Equal(CuActionState.Blocked, duplicate.State);
+        Assert.NotEqual(first.ActionId, duplicate.ActionId);
+        Assert.Equal("click", b.Get(first.ActionId)!.Action.Verb);
+    }
+
+    [Fact]
+    public async Task TerminalSubmissionFloodStaysWithinHardRecordCap()
+    {
+        var options = new CuBrokerOptions
+        {
+            MaxItems = 5,
+            MaxNonTerminalItems = 3,
+            MaxNonTerminalPerHarness = 3,
+        };
+        var b = new CuBroker(new FixedAuditor(CuVerdict.Allow("test")), options: options);
+
+        for (var i = 0; i < 30; i++)
+            Assert.Equal(CuActionState.Blocked,
+                (await b.SubmitAsync(Act("unknown-" + i), new CuContext())).State);
+
+        Assert.True(b.ItemCount <= options.MaxItems);
     }
 }

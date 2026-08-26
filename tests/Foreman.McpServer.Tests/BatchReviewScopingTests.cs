@@ -28,8 +28,10 @@ public sealed class BatchReviewScopingTests : IDisposable
             ResetBehaviorProfile = id => _lastReset = id,
             GetMcpClients = () =>
             [
-                new McpClientInfo("codex-cli", "1.0", Sampling: false, Elicitation: false),
-                new McpClientInfo("claude-code", "1.0", Sampling: true, Elicitation: false),
+                new McpClientInfo("codex-cli", "1.0", Sampling: false, Elicitation: false,
+                    AuthenticatedHarnessId: "codex"),
+                new McpClientInfo("claude-code", "1.0", Sampling: true, Elicitation: false,
+                    AuthenticatedHarnessId: "claude-code"),
             ],
             GetMcpInventory = () =>
             [
@@ -73,18 +75,20 @@ public sealed class BatchReviewScopingTests : IDisposable
     public void ReportTaskStart_PeerMismatch_DoesNotReset_AndExplains()
     {
         using var doc = J(ForemanMcpTools.ReportTaskStart("new task", resetMetrics: true, http: AsCodexStolen));
-        Assert.True(doc.RootElement.GetProperty("acknowledged").GetBoolean());
+        Assert.False(doc.RootElement.GetProperty("acknowledged").GetBoolean());
         Assert.False(doc.RootElement.GetProperty("metricsReset").GetBoolean());
-        Assert.False(string.IsNullOrEmpty(doc.RootElement.GetProperty("metricsResetRefused").GetString()));
+        Assert.Contains("does not match", doc.RootElement.GetProperty("reason").GetString());
         Assert.Null(_lastReset);   // escalation history NOT wiped
     }
 
     [Fact]
-    public void ReportTaskStart_PeerOk_Resets()
+    public void ReportTaskStart_PeerOk_AnnouncesButCannotReset()
     {
         using var doc = J(ForemanMcpTools.ReportTaskStart("new task", resetMetrics: true, http: AsCodex));
-        Assert.True(doc.RootElement.GetProperty("metricsReset").GetBoolean());
-        Assert.Equal("codex", _lastReset);
+        Assert.True(doc.RootElement.GetProperty("acknowledged").GetBoolean());
+        Assert.False(doc.RootElement.GetProperty("metricsReset").GetBoolean());
+        Assert.Contains("cannot clear", doc.RootElement.GetProperty("metricsResetRefused").GetString());
+        Assert.Null(_lastReset);
     }
 
     // ── S-4: secret-shaped text in an Ask Harness prompt is masked at egress ──────────────────────

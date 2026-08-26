@@ -10,10 +10,12 @@ public sealed class HarnessCapabilityPolicyTests
     {
         var effective = new ForemanSettings().EffectiveCapabilityRestrictions("codex");
 
-        Assert.Equal(HarnessCapabilityAccess.Allow, effective.ComputerUse);
-        Assert.Equal(HarnessCapabilityAccess.Allow, effective.BrowserUse);
-        Assert.True(HarnessCapabilityPolicy.EvaluateComputerUse(effective).Allowed);
-        Assert.True(HarnessCapabilityPolicy.EvaluateBrowserUse(effective).Allowed);
+        Assert.Equal(HarnessCapabilityAccess.AskFirst, effective.ComputerUse);
+        Assert.Equal(HarnessCapabilityAccess.AskFirst, effective.BrowserUse);
+        Assert.False(HarnessCapabilityPolicy.EvaluateComputerUse(effective).Allowed);
+        Assert.False(HarnessCapabilityPolicy.EvaluateBrowserUse(effective).Allowed);
+        Assert.Equal(HarnessCapabilityAccess.AskFirst, effective.ComputerUse);
+        Assert.Equal(HarnessCapabilityAccess.AskFirst, effective.BrowserUse);
     }
 
     [Fact]

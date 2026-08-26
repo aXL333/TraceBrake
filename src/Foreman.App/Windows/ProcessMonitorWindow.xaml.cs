@@ -1,4 +1,5 @@
 using Foreman.Core.Models;
+using Foreman.Monitor;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -14,6 +15,8 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
     private readonly Func<IEnumerable<ProcessRecord>> _getSnapshot;
     private readonly Func<int, double?>? _getNetRate;
     private readonly Func<string, (bool Ok, string Message)>? _requestCleanup;
+    private readonly Func<string, HarnessTerminationResult>? _killHarness;
+    private readonly Func<int, string?>? _resolveHarnessByPid;
     private readonly DispatcherTimer _timer;
     private readonly UiTelemetryCache _telemetry;
     private ProcessMonitorVm? _selected;
@@ -21,11 +24,15 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
     public ProcessMonitorWindow(
         Func<IEnumerable<ProcessRecord>> getSnapshot,
         Func<int, double?>? getNetRate = null,
-        Func<string, (bool Ok, string Message)>? requestCleanup = null)
+        Func<string, (bool Ok, string Message)>? requestCleanup = null,
+        Func<string, HarnessTerminationResult>? killHarness = null,
+        Func<int, string?>? resolveHarnessByPid = null)
     {
         _getSnapshot = getSnapshot;
         _getNetRate  = getNetRate;
         _requestCleanup = requestCleanup;
+        _killHarness = killHarness;
+        _resolveHarnessByPid = resolveHarnessByPid;
         // Sample resource usage on a background loop; the UI just reads the latest snapshot (the GPU
         // perf-counter enumeration is far too slow to run on the dispatcher every 2s).
         _telemetry = new UiTelemetryCache(() => _getSnapshot().Select(p => p.Pid).ToList());
@@ -161,7 +168,7 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
     {
         if (_requestCleanup is null) return;
 
-        var harnessId = _selected?.HarnessId;
+        var harnessId = SelectedHarnessId();
         if (string.IsNullOrEmpty(harnessId))
         {
             MessageBox.Show(
@@ -174,6 +181,43 @@ public partial class ProcessMonitorWindow : UserControl, IDisposable
         var (ok, msg) = _requestCleanup(harnessId);
         MessageBox.Show(msg, "TraceBrake — Self-cleanup",
             MessageBoxButton.OK, ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    private void KillHarnessClick(object sender, RoutedEventArgs e)
+    {
+        if (_killHarness is null) return;
+
+        var harnessId = SelectedHarnessId();
+        if (string.IsNullOrEmpty(harnessId))
+        {
+            MessageBox.Show(
+                "TraceBrake cannot attribute the selected process to a harness. Select the agent's root process or a known child process first.",
+                "TraceBrake — End Harness Processes", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            $"End every running process tree owned by '{harnessId}'?\n\n" +
+            "TraceBrake will re-check each live process identity, then immediately terminate the complete tree. " +
+            "Unsaved agent work will be lost.",
+            "TraceBrake — Confirm End Harness",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        var result = _killHarness(harnessId);
+        MessageBox.Show(
+            result.OperatorMessage,
+            "TraceBrake — End Harness Processes",
+            MessageBoxButton.OK,
+            result.Complete ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        Refresh();
+    }
+
+    private string? SelectedHarnessId()
+    {
+        if (_selected is null) return null;
+        return _selected.HarnessId ?? _resolveHarnessByPid?.Invoke(_selected.Pid);
     }
 
     private void OpenLocationClick(object sender, RoutedEventArgs e)

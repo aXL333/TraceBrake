@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Foreman.Core.Settings;
 
@@ -89,10 +90,61 @@ public static class SettingsSeal
     }
 
     /// <summary>
-    /// Deterministic projection of the fields whose silent change weakens TraceBrake's posture, including the graded
-    /// universal Trust profiles. Order-independent so re-serialization cannot cause a false tamper verdict.
+    /// Deny-by-default projection: every persisted setting is sealed. This intentionally avoids a hand-maintained
+    /// security-field allowlist, because a newly added authority/evidence setting must not silently fall outside the
+    /// seal until somebody remembers to update a second file. Object/dictionary keys are canonicalized; arrays whose
+    /// semantics are sets are sorted so harmless serialization order changes do not create false tamper alarms.
     /// </summary>
     public static string SecurityProjection(ForemanSettings s)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        var node = JsonSerializer.SerializeToNode(s)
+                   ?? throw new InvalidOperationException("Could not project TraceBrake settings.");
+        return Canonicalize(node, "$", propertyName: null).ToJsonString();
+    }
+
+    private static JsonNode Canonicalize(JsonNode node, string path, string? propertyName)
+    {
+        if (node is JsonObject obj)
+        {
+            var canonical = new JsonObject();
+            foreach (var item in obj.OrderBy(static p => p.Key, StringComparer.Ordinal))
+                canonical[item.Key] = item.Value is null
+                    ? null
+                    : Canonicalize(item.Value, path + "." + item.Key, item.Key);
+            return canonical;
+        }
+
+        if (node is JsonArray array)
+        {
+            var items = array.Select(item => item is null
+                    ? null
+                    : Canonicalize(item, path + "[]", propertyName))
+                .ToList();
+            if (IsSetLikeArray(path, propertyName))
+                items.Sort(static (a, b) => StringComparer.Ordinal.Compare(a?.ToJsonString(), b?.ToJsonString()));
+            var canonical = new JsonArray();
+            foreach (var item in items) canonical.Add(item);
+            return canonical;
+        }
+
+        return node.DeepClone();
+    }
+
+    private static bool IsSetLikeArray(string path, string? propertyName) => propertyName is
+        nameof(ForemanSettings.DisabledHarnesses) or
+        nameof(ForemanSettings.EmergencyRuleIds) or
+        nameof(ForemanSettings.PairedExtensionOrigins) or
+        nameof(ForemanSettings.CustomHarnessExes) or
+        nameof(ForemanSettings.Mutes) or
+        "EnrolledDeviceSerials" or
+        "PlantedPaths" or
+        "TargetHarnessIds" or
+        "MinimumSeverities"
+        || path.Contains(".HarnessModalities.", StringComparison.Ordinal);
+
+    /// <summary>Previous projection retained to verify and migrate seals written before deny-by-default coverage.</summary>
+    public static string LegacySecurityProjectionV3(ForemanSettings s)
     {
         var projection = new
         {
@@ -214,6 +266,8 @@ public static class SettingsSeal
             var mac = storedSeal[LocalScheme.Length..];
             if (MacEquals(ComputeMac(SecurityProjection(loaded), secret), mac))
                 return SettingsSealVerdict.Sealed;
+            if (MacEquals(ComputeMac(LegacySecurityProjectionV3(loaded), secret), mac))
+                return SettingsSealVerdict.LegacySealed;
             if (MacEquals(ComputeMac(LegacySecurityProjectionV2(loaded), secret), mac))
                 return SettingsSealVerdict.LegacySealed;
             return SettingsSealVerdict.Tampered;
@@ -222,6 +276,7 @@ public static class SettingsSeal
         if (storedSeal.Contains(':', StringComparison.Ordinal))
             return SettingsSealVerdict.Tampered;
         if (MacEquals(ComputeMac(SecurityProjection(loaded), secret), storedSeal) ||
+            MacEquals(ComputeMac(LegacySecurityProjectionV3(loaded), secret), storedSeal) ||
             MacEquals(ComputeMac(LegacySecurityProjectionV2(loaded), secret), storedSeal) ||
             MacEquals(ComputeMac(LegacySecurityProjectionV1(loaded), secret), storedSeal))
             return SettingsSealVerdict.LegacySealed;

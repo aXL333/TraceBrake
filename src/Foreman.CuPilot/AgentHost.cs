@@ -45,10 +45,16 @@ internal static class AgentHost
             try { server = CreateOwnerOnlyDuplexPipe(pipeName); }
             catch (Exception ex) { error = "could not host HOP B pipe: " + ex.Message; return false; }
 
-            // Job Object FIRST, so the agent is in it before it can spawn anything: KILL_ON_JOB_CLOSE means when the
-            // shim dies (even via TerminateProcess on panic, which skips managed finally) the kernel reaps the whole
-            // agent tree - the untrusted agent can never survive a panic.
-            EnsureJob();
+            // Put THIS pilot in the kill-on-close job BEFORE starting the untrusted agent. Windows assigns children
+            // to their parent's job by default (breakaway is not enabled), so containment exists at the instant the
+            // child starts rather than in a racy Start -> Assign window. Fail closed: without the kernel job, the
+            // panic path could kill the pilot while leaving the agent tree alive.
+            if (!EnsureJob(out var jobError))
+            {
+                try { server.Dispose(); } catch { }
+                error = "could not arm mandatory agent containment: " + jobError;
+                return false;
+            }
 
             Process agent;
             try
@@ -65,7 +71,16 @@ internal static class AgentHost
             }
             catch (Exception ex) { try { server.Dispose(); } catch { } error = "could not launch agent: " + ex.Message; return false; }
 
-            try { if (_job != IntPtr.Zero) AssignProcessToJobObject(_job, agent.Handle); } catch { }
+            // Defense in depth: prove the newly-created process inherited our exact job before handing it the pipe
+            // secret. A platform/runtime regression must disable the feature, never silently downgrade containment.
+            if (!IsProcessInJob(agent.Handle, _job, out var inJob) || !inJob)
+            {
+                try { agent.Kill(entireProcessTree: true); } catch { }
+                try { agent.Dispose(); } catch { }
+                try { server.Dispose(); } catch { }
+                error = "launched agent did not inherit the mandatory kill-on-close job";
+                return false;
+            }
 
             // Hand the agent its HOP B pipe name + the session secret via STDIN (an inherited handle), then close.
             try
@@ -187,13 +202,18 @@ internal static class AgentHost
         }
     }
 
-    private static void EnsureJob()
+    private static bool EnsureJob(out string error)
     {
-        if (_job != IntPtr.Zero) return;
+        error = string.Empty;
+        if (_job != IntPtr.Zero) return true;
         try
         {
             var job = CreateJobObject(IntPtr.Zero, null);
-            if (job == IntPtr.Zero) return;
+            if (job == IntPtr.Zero)
+            {
+                error = $"CreateJobObject failed (win32={Marshal.GetLastWin32Error()})";
+                return false;
+            }
             var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
             var len = Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
@@ -201,12 +221,31 @@ internal static class AgentHost
             try
             {
                 Marshal.StructureToPtr(info, p, false);
-                if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, p, (uint)len)) _job = job;
-                else CloseHandle(job);
+                if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, p, (uint)len))
+                {
+                    error = $"SetInformationJobObject failed (win32={Marshal.GetLastWin32Error()})";
+                    CloseHandle(job);
+                    return false;
+                }
             }
             finally { Marshal.FreeHGlobal(p); }
+
+            using var self = Process.GetCurrentProcess();
+            if (!AssignProcessToJobObject(job, self.Handle))
+            {
+                error = $"AssignProcessToJobObject(pilot) failed (win32={Marshal.GetLastWin32Error()})";
+                CloseHandle(job);
+                return false;
+            }
+
+            _job = job;
+            return true;
         }
-        catch { /* no job -> Stop()'s explicit kill-tree is the fallback */ }
+        catch (Exception ex)
+        {
+            error = ex.GetType().Name;
+            return false;
+        }
     }
 
     private static NamedPipeServerStream CreateOwnerOnlyDuplexPipe(string name)
@@ -238,6 +277,10 @@ internal static class AgentHost
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsProcessInJob(IntPtr processHandle, IntPtr jobHandle, [MarshalAs(UnmanagedType.Bool)] out bool result);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -2,6 +2,7 @@ using Foreman.Core.Heuristics;
 using Foreman.Core.Mcp;
 using Foreman.Core.Models;
 using Foreman.Core.Profiles;
+using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 
 namespace Foreman.McpServer.Tests;
@@ -14,6 +15,18 @@ public sealed class ForemanMcpToolsTests : IDisposable
     private readonly ProcessRecord _harness;
     private readonly ProcessRecord _child;
     private readonly ForemanState _state;
+
+    private sealed class FixedHttpContextAccessor : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; }
+    }
+
+    private static IHttpContextAccessor AsHarness(string id)
+    {
+        var context = new DefaultHttpContext();
+        context.Items[CallerScope.HttpItemKey] = new CallerScope(id, IsOperator: false);
+        return new FixedHttpContextAccessor { HttpContext = context };
+    }
 
     public ForemanMcpToolsTests()
     {
@@ -69,7 +82,8 @@ public sealed class ForemanMcpToolsTests : IDisposable
     {
         using var doc = ToJson(ForemanMcpTools.ReportSuspiciousCommand(
             "reg save HKLM\\SAM sam.hiv",
-            harnessId: "codex"));
+            harnessId: "codex",
+            http: AsHarness("codex")));
 
         Assert.Equal("escalate", doc.RootElement.GetProperty("decision").GetString());
         Assert.Equal("cred-001", doc.RootElement.GetProperty("matchedRule").GetString());
@@ -84,7 +98,8 @@ public sealed class ForemanMcpToolsTests : IDisposable
         for (var i = 0; i < 13; i++)
         {
             last?.Dispose();
-            last = ToJson(ForemanMcpTools.ReportSuspiciousCommand("reg save HKLM\\SAM sam.hiv"));
+            last = ToJson(ForemanMcpTools.ReportSuspiciousCommand(
+                "reg save HKLM\\SAM sam.hiv", http: AsHarness("codex")));
         }
 
         using (last)
@@ -153,7 +168,8 @@ public sealed class ForemanMcpToolsTests : IDisposable
             _child.Pid,
             "cmd.exe");
 
-        using var pending = ToJson(ForemanMcpTools.ListAskHarnessRequests(harnessId: "codex"));
+        using var pending = ToJson(ForemanMcpTools.ListAskHarnessRequests(
+            harnessId: "codex", http: AsHarness("codex")));
         Assert.Equal(1, pending.RootElement.GetProperty("pendingCount").GetInt32());
         var returned = pending.RootElement.GetProperty("requests")[0];
         Assert.Equal(request.RequestId, returned.GetProperty("RequestId").GetString());
@@ -163,13 +179,15 @@ public sealed class ForemanMcpToolsTests : IDisposable
             request.RequestId,
             "I was waiting for a command to finish; I will stop it.",
             actionTaken: "operator should stop pid",
-            harnessId: "codex"));
+            harnessId: "codex",
+            http: AsHarness("codex")));
 
         Assert.True(reply.RootElement.GetProperty("accepted").GetBoolean());
 
         using var answered = ToJson(ForemanMcpTools.ListAskHarnessRequests(
             harnessId: "codex",
-            includeAnswered: true));
+            includeAnswered: true,
+            http: AsHarness("codex")));
         var answeredRequest = answered.RootElement.GetProperty("requests")[0];
         Assert.Equal("answered", answeredRequest.GetProperty("Status").GetString());
         Assert.Contains("waiting for a command", answeredRequest.GetProperty("ReplyText").GetString());

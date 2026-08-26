@@ -2,6 +2,7 @@ using Foreman.Core.Behavior;
 using Foreman.Core.Events;
 using Foreman.Core.Profiles;
 using Foreman.Core.Settings;
+using Foreman.Core.Termination;
 using Foreman.Monitor.Wmi;
 
 namespace Foreman.Monitor;
@@ -24,6 +25,17 @@ public sealed class MonitorService : IDisposable
     public ProfileMatcher     Profiles { get; }
     public McpInventoryMonitor McpInventory { get; }
     public IdleHarnessDetector IdleCleanup { get; }
+
+    /// <summary>Connects broker/UI termination producers to both live and reconciliation exit consumers.</summary>
+    public ExpectedTerminationLedger? ExpectedTerminations
+    {
+        set
+        {
+            _watcher.ExpectedTerminations = value;
+            _poller.ExpectedTerminations = value;
+            IdleCleanup.ExpectedTerminations = value;
+        }
+    }
 
     public MonitorService(ForemanSettings settings, EventBus bus)
     {

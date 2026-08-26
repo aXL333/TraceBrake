@@ -139,4 +139,20 @@ public sealed class LiveWeaveBrokerTests
         Assert.False(second.Ok);
         Assert.Contains("already completed", second.Reason);
     }
+
+    [Fact]
+    public void Enqueue_SnapshotsMutableParametersBeforeAuditAndDelivery()
+    {
+        var broker = new LiveWeaveBroker();
+        broker.SetDriver("codex");
+        var parameters = new Dictionary<string, object?> { ["html"] = "<main>safe</main>" };
+        var id = broker.Enqueue("apply_page", parameters, "codex");
+
+        parameters["html"] = "<script>changed-after-enqueue()</script>";
+
+        var delivered = Assert.Single(broker.Poll(1));
+        Assert.Equal(id, delivered.CommandId);
+        Assert.Contains("safe", delivered.Parameters["html"]!.ToString());
+        Assert.DoesNotContain("changed-after-enqueue", delivered.Parameters["html"]!.ToString());
+    }
 }

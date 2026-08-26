@@ -5,6 +5,8 @@ namespace Foreman.Core.Tests.ComputerUse;
 /// <summary>Slice 1: the desktop one-window-at-a-time gate (HWND-scoped excursion lock, parallel to the browser pin).</summary>
 public sealed class CuBrokerWindowGateTests
 {
+    private const string DesktopExecutor = "desktop-window-test-executor";
+
     private sealed class Allow : IAuditor
     {
         public Task<CuVerdict> JudgeAsync(CuAction a, CuContext c, CancellationToken ct = default)
@@ -16,6 +18,8 @@ public sealed class CuBrokerWindowGateTests
         => new(CuModality.Desktop, verb, args ?? new(), ByHarness: "operator");
     private static CuWindowRef Win(long hwnd, int pid = 4242)
         => new((IntPtr)hwnd, pid, "notepad", "Untitled - Notepad", 0);
+    private static IReadOnlyList<CuBrokerItem> Claim(CuBroker broker, int limit = 10) =>
+        broker.Claim(limit, CuModality.Desktop, DesktopExecutor);
 
     [Fact]
     public async Task NoBoundWindow_DesktopStateChange_Held()
@@ -68,7 +72,7 @@ public sealed class CuBrokerWindowGateTests
         var b = Broker();
         b.SetActiveWindow(Win(100));
         var item = await b.SubmitAsync(Desk("left_click"), new CuContext());
-        var claimed = b.Claim(10);
+        var claimed = Claim(b);
         Assert.Single(claimed);
         Assert.Equal("100", claimed[0].Action.Arg("hwnd"));            // executor can't pick another window
         Assert.False(string.IsNullOrEmpty(claimed[0].Action.Arg("epoch")));
@@ -82,7 +86,7 @@ public sealed class CuBrokerWindowGateTests
         var item = await b.SubmitAsync(Desk("left_click"), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);
         b.SetActiveWindow(Win(300));                     // operator switches the bound window (Epoch bumps)
-        Assert.Empty(b.Claim(10));                        // the approved action is re-held, never auto-retargeted
+        Assert.Empty(Claim(b));                        // the approved action is re-held, never auto-retargeted
         Assert.Equal(CuActionState.Held, b.Get(item.ActionId)!.State);
     }
 
@@ -115,7 +119,7 @@ public sealed class CuBrokerWindowGateTests
         Assert.Equal(CuActionState.Approved, item.State);
         b.OnPanicHalt();
         Assert.Equal(CuActionState.Rejected, b.Get(item.ActionId)!.State);   // queue invalidated on panic
-        Assert.Empty(b.Claim(10));
+        Assert.Empty(Claim(b));
     }
 
     [Fact]
@@ -124,10 +128,11 @@ public sealed class CuBrokerWindowGateTests
         var b = Broker();
         b.SetActiveWindow(Win(100));
         var item = await b.SubmitAsync(Desk("left_click"), new CuContext());
-        Assert.Equal(CuActionState.Approved, item.State);
+        var executing = Assert.Single(Claim(b));
         b.OnPanicHalt();                                                       // panic rejects the in-flight item
         Assert.Equal(CuActionState.Rejected, b.Get(item.ActionId)!.State);
-        var (ok, _) = b.Complete(item.ActionId, ok: false, result: null, error: "killed pipe");
+        var (ok, _) = b.Complete(item.ActionId, ok: false, result: null, error: "killed pipe",
+            CuModality.Desktop, DesktopExecutor, executing.ExecutionToken!);
         Assert.False(ok);                                                      // the pump's post-kill Complete is refused
         Assert.Equal(CuActionState.Rejected, b.Get(item.ActionId)!.State);    // audit record stays truthful
     }
@@ -147,7 +152,7 @@ public sealed class CuBrokerWindowGateTests
         b.SetActiveWindow(Win(100));
         var item = await b.SubmitAsync(Desk("left_click"), new CuContext());
         Assert.Equal(CuActionState.Approved, item.State);
-        Assert.Empty(b.Claim(10));                              // probe reports the window gone -> never delivered (INV-2)
+        Assert.Empty(Claim(b));                              // probe reports the window gone -> never delivered (INV-2)
         Assert.Equal(CuActionState.Held, b.Get(item.ActionId)!.State);
     }
 

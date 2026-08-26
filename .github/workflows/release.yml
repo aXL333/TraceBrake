@@ -34,7 +34,7 @@ jobs:
       # Inno Setup's release and the Chocolatey package checksums.
       INNO_SETUP_VERSION: '6.7.1'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -96,8 +96,16 @@ jobs:
             node --check $file.FullName
             if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $($file.FullName)" }
           }
-          node --test extension-liveweave/tests/project-model.test.mjs
+          $testPaths = @(Get-ChildItem extension-liveweave/tests -Recurse -File -Filter '*.test.mjs' |
+            Sort-Object FullName |
+            ForEach-Object { $_.FullName })
+          if ($testPaths.Count -eq 0) { throw "No LiveWeave tests were discovered." }
+          & node --test @testPaths
           if ($LASTEXITCODE -ne 0) { throw "LiveWeave tests failed." }
+          node --test scripts/Test-ExtensionCuPanic.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Browser CU panic/lease contract tests failed." }
+          node --test scripts/Test-ExtensionVaultPolicy.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Browser vault policy bypass tests failed." }
 
       - name: Test release commit
         run: dotnet test Foreman.slnx -c Release --verbosity minimal
@@ -208,7 +216,7 @@ jobs:
       - name: Upload unsigned app payload
         id: upload-app
         if: ${{ env.SIGN == 'true' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: foreman-app-unsigned
           path: publish
@@ -216,7 +224,7 @@ jobs:
 
       - name: Sign app payload (SignPath)
         if: ${{ env.SIGN == 'true' }}
-        uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
           organization-id: '${{ vars.SIGNPATH_ORGANIZATION_ID }}'
@@ -262,7 +270,7 @@ jobs:
       - name: Upload unsigned installer
         id: upload-installer
         if: ${{ env.SIGN == 'true' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tracebrake-installer-unsigned
           path: installer/Output/*.exe
@@ -270,7 +278,7 @@ jobs:
 
       - name: Sign installer (SignPath)
         if: ${{ env.SIGN == 'true' }}
-        uses: signpath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
           organization-id: '${{ vars.SIGNPATH_ORGANIZATION_ID }}'
@@ -305,7 +313,7 @@ jobs:
 
       - name: Upload unpublished release candidate
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish_release }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tracebrake-installer-candidate-${{ steps.ver.outputs.version }}
           path: |
@@ -325,7 +333,7 @@ jobs:
           }
           @(
             'body<<TRACEBRAKE_RELEASE_BODY'
-            '> **OpenAI Build Week record:** the immutable submission snapshot is [`v0.1.0-alpha3`](https://github.com/aXL333/Foreman/releases/tag/v0.1.0-alpha3). Later releases are maintenance/development builds and are not claimed as submission-period work.'
+            '> **OpenAI Build Week record:** the immutable submission snapshot is [`v0.1.0-alpha3`](https://github.com/aXL333/TraceBrake/releases/tag/v0.1.0-alpha3). Later releases are maintenance/development builds and are not claimed as submission-period work.'
             ''
             $signing
             ''
@@ -342,7 +350,7 @@ jobs:
       #   gh attestation verify <file> --repo ${{ github.repository }}
       - name: Attest build provenance
         if: ${{ github.event_name == 'push' || inputs.publish_release }}
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
             installer/Output/*.exe

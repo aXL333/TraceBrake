@@ -386,14 +386,25 @@ public partial class App : Application
                     $"projection={audit.PriorSecurityProjectionHash}->{audit.CurrentSecurityProjectionHash}. " +
                     audit.Attribution.Reason)));
         };
+        SettingsStore.SaveFailureSink = message =>
+        {
+            var safe = SecretRedactor.Redact(message);
+            EventBus.Instance.Publish(new MonitoringNoticeEvent(
+                DateTimeOffset.UtcNow,
+                ForemanSeverity.High,
+                "Foreman.Settings",
+                safe));
+            if (_osLogEnabled)
+                _osLog.Write(OsEventIds.SecuritySignificant, OsEventCategory.Security, ForemanSeverity.High, safe);
+        };
 
         _tray = new TrayController(settings, EventBus.Instance);
         _tray.Initialize();
 
         _monitor = new MonitorService(settings, EventBus.Instance);
-        _monitor.Start();
-
         _mcpHost = new McpServerHost(settings, EventBus.Instance);
+        _monitor.ExpectedTerminations = _mcpHost.State.ExpectedTerminations;
+        _monitor.Start();
         // Lock the MCP token file to the current user so another principal on the box can't read it.
         TokenFileProtector.RestrictToCurrentUser(_mcpHost.TokenFilePath);
 
@@ -432,9 +443,19 @@ public partial class App : Application
         cuBroker.SetDriver(settings.CuDriver);
         cuBroker.DriverPersister = d =>
         {
+            var prior = settings.CuDriver;
             settings.CuDriver = d;
-            try { SaveWithDefaultAttribution(settings, "persist-cu-driver", SettingsChangeOrigin.InternalRuntime); }
-            catch { /* in-memory driver still applies this session */ }
+            try
+            {
+                SaveWithDefaultAttribution(settings, "persist-cu-driver", SettingsChangeOrigin.InternalRuntime);
+                if (SettingsStore.LastSaveFault is { } fault)
+                    throw new InvalidOperationException(fault);
+            }
+            catch
+            {
+                settings.CuDriver = prior;
+                throw;
+            }
         };
         cuBroker.AllowTabOverride = settings.CuTabOverride;   // opt-in: off-focus changes may proceed if justified
         cuBroker.DesktopAutoGrant = settings.CuDesktopAutoGrant;   // INV-15: default OFF -> desktop actions land Held
@@ -475,14 +496,28 @@ public partial class App : Application
             }));
         };
         _mcpHost.State.Cu = cuBroker;
-        // INV-16: approving a HELD desktop/Android CU action requires a fresh presence tap, not just the operator
-        // bearer token. PresenceGuard.Configure runs later in startup; this delegate is only INVOKED at approve-time.
+        // INV-16: approving ANY HELD CU action requires a fresh presence tap, not just the operator bearer token.
+        // PresenceGuard.Configure runs later in startup; these delegates are only INVOKED at mutation time.
         _mcpHost.State.CuPresenceApprovalGate = modality => Security.PresenceGuard.AuthorizeAsync(
             Foreman.Core.Security.WeakeningAction.ApproveCuSensitiveAction,
             $"approve a held {modality.ToString().ToLowerInvariant()} computer-use action", forcePresence: true, freshTap: true);
+        _mcpHost.State.McpOperatorPresenceGate = detail => Security.PresenceGuard.AuthorizeAsync(
+            Foreman.Core.Security.WeakeningAction.ApproveCuSensitiveAction,
+            detail, forcePresence: true, freshTap: true);
         // Connect-Agent window's shared browser/Android driver picker reads/sets the CU driver in-process (operator).
         _tray.GetCuDriver = () => _mcpHost.State.Cu?.Driver;
-        _tray.SetCuDriver = id => _mcpHost.State.Cu?.SetDriver(id);
+        _tray.SetCuDriver = async id =>
+        {
+            if (!await Security.PresenceGuard.AuthorizeAsync(
+                    Foreman.Core.Security.WeakeningAction.EnrollLocalAgentHost,
+                    $"change the browser/Android driver set to '{id ?? "operator only"}'",
+                    forcePresence: true,
+                    freshTap: true))
+                return (false, "Fresh operator presence was not verified; the driver set is unchanged.");
+
+            return _mcpHost.State.Cu?.SetDriver(id)
+                   ?? (false, "The computer-use broker is not available.");
+        };
         _tray.GetCuAttentionTab = () => _mcpHost.State.Cu?.AttentionTab;
 
         // Android/ADB bridge: a third modality on the SAME audited broker and shared harness-driver set. The executor
@@ -580,15 +615,14 @@ public partial class App : Application
         {
             var cu = _mcpHost.State.Cu;
             if (cu is null) return (false, "computer use is not available");
-            // INV-16: held DESKTOP and ANDROID actions need a fresh presence tap, exactly as cu_approve enforces.
-            if (cu.Get(id)?.Action.Modality is Foreman.Core.ComputerUse.CuModality.Desktop or Foreman.Core.ComputerUse.CuModality.Android)
-            {
-                var modality = cu.Get(id)!.Action.Modality;
-                var gate = _mcpHost.State.CuPresenceApprovalGate;
-                var authed = false;
-                if (gate is not null) { try { authed = await gate(modality).ConfigureAwait(false); } catch { authed = false; } }
-                if (!authed) return (false, $"a presence tap (Windows Hello / FIDO2) is required to approve a {modality.ToString().ToLowerInvariant()} action");
-            }
+            // INV-16: every held action needs a fresh presence tap, exactly as cu_approve enforces.
+            var item = cu.Get(id);
+            if (item is null) return (false, "unknown computer-use action");
+            var modality = item.Action.Modality;
+            var gate = _mcpHost.State.CuPresenceApprovalGate;
+            var authed = false;
+            if (gate is not null) { try { authed = await gate(modality).ConfigureAwait(false); } catch { authed = false; } }
+            if (!authed) return (false, $"a presence tap (Windows Hello / FIDO2) is required to approve a {modality.ToString().ToLowerInvariant()} action");
             var (ok, reason) = cu.ApproveHeld(id);
             if (ok) EventBus.Instance.Publish(new InfoEvent(DateTimeOffset.UtcNow, "Foreman.ComputerUse",
                 $"Operator APPROVED held computer-use action [{id}] (dashboard)."));
@@ -921,22 +955,53 @@ public partial class App : Application
                 _mcpHost.State.ReplyToAskHarnessRequest(requestId, res.ReplyText!, "replied via sampling round-trip", harnessId, null);
         };
         _tray.RequestHarnessCleanup = type => _monitor.IdleCleanup.TriggerCleanup(type);
-        // "Prep sessions for update": reaps done by PrepareForUpdate are recorded as EXPECTED terminations (the ledger
-        // lives in McpServer state, shared via Core) for when the brokered-kill suppression consumer is wired; until
-        // then those reaped exits still surface as exit/orphan events (the reap is honest, not silent).
-        _monitor.IdleCleanup.ExpectedTerminations = _mcpHost.State.ExpectedTerminations;
+        // "Prep sessions for update" reaps are recorded in the same expected-termination ledger used by MCP/UI
+        // process control, so only TraceBrake-brokered exits stay quiet; raw/unattributed exits remain visible.
         _tray.PrepSessionsForUpdate = () => _monitor.IdleCleanup.PrepareForUpdate();
 
         // wire behavior tracker into tray (metrics window + kill + disable actions)
         _tray.GetBehaviorProfiles   = () => _monitor.Behavior.Profiles;
         _tray.ResetBehaviorProfile  = id => _monitor.Behavior.ResetProfile(id);
         _tray.GetProcessesByHarness = type => _monitor.Tree.GetByHarnessType(type);
-        _tray.KillHarness           = type => _monitor.Tree.KillHarness(type);
+        _tray.ResolveHarnessByPid   = pid => _monitor.Tree.FindHarnessTypeAncestor(pid)?.HarnessType;
+        _tray.KillHarness           = type =>
+        {
+            var result = _monitor.Tree.KillHarness(
+                type,
+                _mcpHost.State.ExpectedTerminations,
+                "operator:ui",
+                $"operator requested termination of harness '{type}'");
+            if (result.Complete)
+                EventBus.Instance.Publish(new InfoEvent(
+                    DateTimeOffset.UtcNow,
+                    "Foreman.ProcessControl",
+                    $"Operator requested harness termination. {result.OperatorMessage}"));
+            else
+                EventBus.Instance.Publish(new MonitoringNoticeEvent(
+                    DateTimeOffset.UtcNow,
+                    ForemanSeverity.Medium,
+                    "Foreman.ProcessControl",
+                    $"Operator requested harness termination, but it did not fully complete. {result.OperatorMessage}"));
+            return result;
+        };
         _tray.DisableHarness        = id =>
         {
             using var provenance = SettingsChangeUiScope.Begin("disable-harness");
-            settings.DisabledHarnesses.Add(id);
-            SettingsStore.Save(settings);
+            var added = settings.DisabledHarnesses.Add(id);
+            try
+            {
+                SettingsStore.Save(settings);
+                if (SettingsStore.LastSaveFault is { } fault)
+                    throw new InvalidOperationException(fault);
+                return (true, $"Monitoring disabled for '{id}'.");
+            }
+            catch (Exception ex)
+            {
+                // The live classifier reads this same settings instance. Roll back the in-memory weakening when
+                // the sealed settings cannot be committed, rather than silently disabling coverage for this run.
+                if (added) settings.DisabledHarnesses.Remove(id);
+                return (false, "TraceBrake could not persist the sealed setting, so monitoring remains enabled. " + ex.Message);
+            }
         };
 
         // Revalidate tracked coverage at startup, before configuring the elevated auditor. A missing or replaced
@@ -1226,15 +1291,14 @@ public partial class App : Application
                 "from the UI to re-seal; investigate if you didn't make this change."));
 
         // Guardian-scheme seal present but the guardian (the SYSTEM key-holder) was unreachable, so the seal could
-        // be neither confirmed nor refuted. Don't block load and don't cry tamper — but don't silently pass it off
-        // as Sealed either: surface that the posture is UNVERIFIED this launch (Medium). Usually a transient outage
-        // of the auto-start service; persistent means the guardian was disabled (itself worth a look).
+        // be neither confirmed nor refuted. The store preserves the primary, loads fail-safe defaults, and blocks
+        // settings writes for this launch. Surface that degraded posture without falsely calling it tampering.
         if (SettingsStore.LastSealVerdict == SettingsSealVerdict.Unverified)
             EventBus.Instance.Publish(new MonitoringNoticeEvent(
                 DateTimeOffset.UtcNow, ForemanSeverity.Medium, "Foreman.Settings",
-                "settings.json carries a guardian-backed seal but the guardian service was unreachable at launch, so " +
-                "its security posture could not be verified this session. If this persists, check that the TraceBrake " +
-                "guardian service is running — a disabled guardian can't catch out-of-band edits to your settings."));
+                "settings.json carries a guardian-backed seal but the guardian service was unreachable at launch. " +
+                "TraceBrake preserved the primary, loaded fail-safe defaults, and will refuse settings saves this " +
+                "session. Restore the TraceBrake guardian service and restart before changing settings."));
 
         // Anti-rollback canary (B8): the chain head TraceBrake last witnessed in the OS event log is gone from the
         // on-disk log — it was reverted to an earlier state while TraceBrake was down. The in-file hash chain can't
@@ -1641,6 +1705,7 @@ public partial class App : Application
 
         _cts?.Cancel();
         SettingsStore.SaveAuditSink = null;
+        SettingsStore.SaveFailureSink = null;
         SettingsChangeUiScope.Configure(null);
         _settingsInputProvenance?.Dispose();
         _sidecarWatchdog?.Stop();

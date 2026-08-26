@@ -9,6 +9,13 @@ namespace Foreman.Core.Heuristics;
 /// </summary>
 public static class FalsePositiveFilter
 {
+    // Launcher hygiene exemptions are code-reviewed, rule-specific exceptions — never a general severity bypass.
+    // Keeping this allowlist in code means a disk profile cannot nominate a new High/Critical rule for suppression.
+    private static readonly HashSet<string> _launcherHygieneRuleAllowlist = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "win-002", // PowerShell ExecutionPolicy Bypass used by a verified harness hook script path.
+    };
+
     // Process names whose OWN command lines are low-signal noise: TraceBrake itself and dev test runners.
     // NOTE: a basename is NOT an identity — a monitored agent runs as the same user and can name its dropper
     // anything. So this set is only ever consulted to drop sub-Medium NOISE (see IsSuppressed); it can never
@@ -54,6 +61,10 @@ public static class FalsePositiveFilter
         string commandLine,
         HarnessProfile? profile)
     {
+        if (rule.ParsedSeverity > ForemanSeverity.Medium ||
+            !_launcherHygieneRuleAllowlist.Contains(rule.Id))
+            return false;
+
         var profileRules = profile?.Alerts.LauncherSuppressedRuleIds ?? [];
         var profileMarkers = profile?.Alerts.TrustedHookPathMarkers ?? [];
         if (profileRules.Contains(rule.Id, StringComparer.OrdinalIgnoreCase) &&

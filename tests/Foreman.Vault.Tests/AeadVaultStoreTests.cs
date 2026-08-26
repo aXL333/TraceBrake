@@ -72,6 +72,31 @@ public sealed class AeadVaultStoreTests : IDisposable
         Assert.ThrowsAny<Exception>(() => new AeadVaultStore(VaultPath).Open(Pw, KeyComp));
     }
 
+    [Theory]
+    [InlineData("MemoryKib", 2_000_000_000)]
+    [InlineData("Iterations", 2_000_000_000)]
+    [InlineData("Parallelism", 2_000_000_000)]
+    public void AttackerControlledKdfCost_IsRejectedBeforeArgon2(string property, int value)
+    {
+        AeadVaultStore.Create(VaultPath, Pw, KeyComp);
+        var node = JsonNode.Parse(File.ReadAllText(VaultPath))!;
+        node[property] = value;
+        File.WriteAllText(VaultPath, node.ToJsonString());
+
+        var ex = Assert.Throws<FormatException>(() => new AeadVaultStore(VaultPath).Open(Pw, KeyComp));
+        Assert.Contains("KDF parameters", ex.Message);
+    }
+
+    [Fact]
+    public void OversizedEnvelopeFile_IsRejectedBeforeReadAllText()
+    {
+        using (var stream = new FileStream(VaultPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            stream.SetLength(AeadVaultStore.MaxEnvelopeBytes + 1L);
+
+        var ex = Assert.Throws<FormatException>(() => new AeadVaultStore(VaultPath).Open(Pw, KeyComp));
+        Assert.Contains("maximum size", ex.Message);
+    }
+
     [Fact]
     public void GetSecret_Totp_ReturnsSixDigitCode()
     {

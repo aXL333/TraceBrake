@@ -2,6 +2,7 @@ using Foreman.Core.Behavior;
 using Foreman.Core.Events;
 using Foreman.Core.Models;
 using Foreman.Core.Settings;
+using Foreman.Monitor;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,7 +16,7 @@ public partial class BehaviorMetricsWindow : UserControl, IDisposable
     private readonly Func<IEnumerable<BehaviorProfile>>   _getProfiles;
     private readonly Action<string>                        _resetProfile;
     private readonly Func<string, IEnumerable<ProcessRecord>> _getByHarness;
-    private readonly Action<string>                        _killHarness;
+    private readonly Func<string, HarnessTerminationResult> _killHarness;
     private readonly ForemanSettings                       _settings;
     private readonly DispatcherTimer                       _timer;
 
@@ -24,7 +25,7 @@ public partial class BehaviorMetricsWindow : UserControl, IDisposable
         Func<IEnumerable<BehaviorProfile>> getProfiles,
         Action<string> resetProfile,
         Func<string, IEnumerable<ProcessRecord>> getByHarness,
-        Action<string> killHarness)
+        Func<string, HarnessTerminationResult> killHarness)
     {
         _settings      = settings;
         _getProfiles   = getProfiles;
@@ -90,7 +91,12 @@ public partial class BehaviorMetricsWindow : UserControl, IDisposable
 
             if (r == MessageBoxResult.Yes)
             {
-                _killHarness(vm.HarnessId);
+                var result = _killHarness(vm.HarnessId);
+                MessageBox.Show(
+                    result.OperatorMessage,
+                    "TraceBrake — End Harness Processes",
+                    MessageBoxButton.OK,
+                    result.Complete ? MessageBoxImage.Information : MessageBoxImage.Warning);
                 Refresh();
             }
         }

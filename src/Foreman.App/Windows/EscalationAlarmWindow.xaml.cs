@@ -2,6 +2,7 @@ using Foreman.Core.Behavior;
 using Foreman.Core.Events;
 using Foreman.Core.Models;
 using Foreman.Core.Settings;
+using Foreman.Monitor;
 using System.Windows;
 
 namespace Foreman.App.Windows;
@@ -9,16 +10,16 @@ namespace Foreman.App.Windows;
 public partial class EscalationAlarmWindow : Window
 {
     private readonly EscalationEvent _event;
-    private readonly Action<string>  _killHarness;
-    private readonly Action<string>  _disableHarness;
+    private readonly Func<string, HarnessTerminationResult> _killHarness;
+    private readonly Func<string, (bool Ok, string Message)> _disableHarness;
     private readonly Action<EscalationEvent>? _auditHarness;
 
     public static Action? OpenLogRequested { get; set; }
 
     private EscalationAlarmWindow(
         EscalationEvent evt,
-        Action<string> killHarness,
-        Action<string> disableHarness,
+        Func<string, HarnessTerminationResult> killHarness,
+        Func<string, (bool Ok, string Message)> disableHarness,
         Action<EscalationEvent>? auditHarness)
     {
         _event          = evt;
@@ -39,8 +40,8 @@ public partial class EscalationAlarmWindow : Window
 
     public static void ShowFor(
         EscalationEvent evt,
-        Action<string> killHarness,
-        Action<string> disableHarness,
+        Func<string, HarnessTerminationResult> killHarness,
+        Func<string, (bool Ok, string Message)> disableHarness,
         Action<EscalationEvent>? auditHarness = null)
     {
         var w = new EscalationAlarmWindow(evt, killHarness, disableHarness, auditHarness);
@@ -80,14 +81,24 @@ public partial class EscalationAlarmWindow : Window
 
         if (r != MessageBoxResult.Yes) return;
 
-        _killHarness(_event.HarnessId);
+        var result = _killHarness(_event.HarnessId);
 
         EventBus.Instance.Publish(new InfoEvent(
             DateTimeOffset.UtcNow,
             "Foreman.Behavior",
-            $"User killed harness '{_event.HarnessDisplayName}' in response to Emergency escalation."));
+            $"Operator used Emergency termination for '{_event.HarnessDisplayName}'. {result.OperatorMessage}"));
 
-        Close();
+        if (result.Complete)
+        {
+            Close();
+            return;
+        }
+
+        MessageBox.Show(
+            result.OperatorMessage,
+            "TraceBrake — Emergency Kill Incomplete",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
     }
 
     private async void DisableClick(object sender, RoutedEventArgs e)
@@ -95,7 +106,16 @@ public partial class EscalationAlarmWindow : Window
         if (!await Foreman.App.Security.PresenceGuard.AuthorizeAsync(
                 Foreman.Core.Security.WeakeningAction.DisableMonitoring, $"disable monitoring for '{_event.HarnessDisplayName}'"))
             return;
-        _disableHarness(_event.HarnessId);
+        var result = _disableHarness(_event.HarnessId);
+        if (!result.Ok)
+        {
+            MessageBox.Show(
+                result.Message,
+                "TraceBrake — Monitoring Still Enabled",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
 
         EventBus.Instance.Publish(new InfoEvent(
             DateTimeOffset.UtcNow,

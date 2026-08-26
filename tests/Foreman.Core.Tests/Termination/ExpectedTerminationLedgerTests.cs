@@ -67,4 +67,15 @@ public sealed class ExpectedTerminationLedgerTests
         Assert.True(l.WasExpected(1234, _now, out _));
         Assert.True(l.WasExpected(1234));
     }
+
+    [Fact]
+    public void FailedBrokerKill_CanWithdrawExpectationWithoutExcusingLaterRawKill()
+    {
+        var l = New();
+        l.Record(1234, _now, "codex", "requested");
+
+        Assert.True(l.Remove(1234, _now));
+        Assert.False(l.WasExpected(1234, _now, out _));
+        Assert.False(l.Remove(1234, _now));
+    }
 }

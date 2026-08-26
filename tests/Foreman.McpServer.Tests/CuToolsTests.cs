@@ -30,6 +30,12 @@ public sealed class CuToolsTests
     private static ForemanState StateWith(CuVerdict verdict)
     {
         var state = new ForemanState { Cu = new CuBroker(new FixedAuditor(verdict)) };
+        state.Cu.SetDriver("codex");
+        state.HarnessCapabilityRestrictions["codex"] = new Foreman.Core.Mcp.HarnessCapabilityRestrictions
+        {
+            ComputerUse = Foreman.Core.Mcp.HarnessCapabilityAccess.Allow,
+            BrowserUse = Foreman.Core.Mcp.HarnessCapabilityAccess.Allow,
+        };
         ForemanMcpTools.SetState(state);
         return state;
     }
@@ -38,6 +44,12 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.Cu!.SetDrivers(drivers);
+        foreach (var driver in drivers)
+            state.HarnessCapabilityRestrictions[driver] = new Foreman.Core.Mcp.HarnessCapabilityRestrictions
+            {
+                ComputerUse = Foreman.Core.Mcp.HarnessCapabilityAccess.Allow,
+                BrowserUse = Foreman.Core.Mcp.HarnessCapabilityAccess.Allow,
+            };
         state.Cu.SetAndroidDevices(["device-1"]);
         state.Adb = new AdbBridgeExecutor(
             AdbBridgeOptions.Create(@"C:\Android\platform-tools\adb.exe", ["device-1"]),
@@ -57,12 +69,18 @@ public sealed class CuToolsTests
         ctx.Items[CallerScope.HttpItemKey] = new CallerScope(id, IsOperator: false);
         return new FixedHttpContextAccessor { HttpContext = ctx };
     }
+    private static Microsoft.AspNetCore.Http.IHttpContextAccessor AsOperator()
+    {
+        var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        ctx.Items[CallerScope.HttpItemKey] = new CallerScope(null, IsOperator: true);
+        return new FixedHttpContextAccessor { HttpContext = ctx };
+    }
 
     [Fact]
     public async Task CuSubmit_Allow_IsApproved()
     {
         StateWith(CuVerdict.Allow("test"));
-        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"https://example.com\"}"));
+        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"https://example.com\"}", AsHarness("codex")));
         Assert.True(doc.RootElement.GetProperty("accepted").GetBoolean());
         Assert.Equal("approved", doc.RootElement.GetProperty("state").GetString());
     }
@@ -71,7 +89,7 @@ public sealed class CuToolsTests
     public async Task CuSubmit_Block_IsBlocked_AndNotAccepted()
     {
         StateWith(CuVerdict.Block("test", "dangerous"));
-        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"x\"}"));
+        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"x\"}", AsHarness("codex")));
         Assert.False(doc.RootElement.GetProperty("accepted").GetBoolean());
         Assert.Equal("blocked", doc.RootElement.GetProperty("state").GetString());
     }
@@ -80,7 +98,7 @@ public sealed class CuToolsTests
     public async Task CuSubmit_BadModality_Rejected()
     {
         StateWith(CuVerdict.Allow("test"));
-        using var doc = Json(await ForemanMcpTools.CuSubmit("hologram", "navigate", "{}"));
+        using var doc = Json(await ForemanMcpTools.CuSubmit("hologram", "navigate", "{}", AsHarness("codex")));
         Assert.False(doc.RootElement.GetProperty("accepted").GetBoolean());
     }
 
@@ -89,7 +107,7 @@ public sealed class CuToolsTests
     {
         StateWith(CuVerdict.Allow("test"));
         var oversized = "{\"text\":\"" + new string('a', 70 * 1024) + "\"}";
-        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "type", oversized));
+        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "type", oversized, AsHarness("codex")));
         Assert.False(doc.RootElement.GetProperty("accepted").GetBoolean());
         Assert.Contains("64 KiB", doc.RootElement.GetProperty("reason").GetString());
     }
@@ -99,7 +117,7 @@ public sealed class CuToolsTests
     {
         // Desktop CU is operator-driven in-process only (INV-7 / Codex review #2) — never over MCP.
         StateWith(CuVerdict.Allow("test"));
-        using var doc = Json(await ForemanMcpTools.CuSubmit("desktop", "click", "{}"));
+        using var doc = Json(await ForemanMcpTools.CuSubmit("desktop", "click", "{}", AsHarness("codex")));
         Assert.False(doc.RootElement.GetProperty("accepted").GetBoolean());
     }
 
@@ -241,8 +259,8 @@ public sealed class CuToolsTests
         _ = await ForemanMcpTools.CuSubmit(
             "android", "tap", "{\"serial\":\"device-1\",\"x\":\"1\",\"y\":\"2\"}", AsHarness("codex"));
 
-        using var ownerStatus = Json(ForemanMcpTools.CuActionStatus(readId, AsHarness("codex")));
-        using var siblingStatus = Json(ForemanMcpTools.CuActionStatus(readId, AsHarness("claude-code")));
+        using var ownerStatus = Json(ForemanMcpTools.CuActionStatus(readId, http: AsHarness("codex")));
+        using var siblingStatus = Json(ForemanMcpTools.CuActionStatus(readId, http: AsHarness("claude-code")));
         using var ownerQueue = Json(ForemanMcpTools.CuStatus(AsHarness("codex")));
         using var siblingQueue = Json(ForemanMcpTools.CuStatus(AsHarness("claude-code")));
 
@@ -253,6 +271,24 @@ public sealed class CuToolsTests
     }
 
     [Fact]
+    public void CuStatus_ScopedHarnessGetsCapabilityWithoutSiblingOrDeviceInventory()
+    {
+        StateWithAndroid("codex", "claude-code");
+
+        using var scoped = Json(ForemanMcpTools.CuStatus(AsHarness("codex")));
+        using var op = Json(ForemanMcpTools.CuStatus(AsOperator()));
+
+        Assert.True(scoped.RootElement.GetProperty("canDrive").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, scoped.RootElement.GetProperty("driver").ValueKind);
+        Assert.Equal(JsonValueKind.Null, scoped.RootElement.GetProperty("android").GetProperty("executable").ValueKind);
+        Assert.Empty(scoped.RootElement.GetProperty("android").GetProperty("enrolledDevices").EnumerateArray());
+        Assert.Equal(1, scoped.RootElement.GetProperty("android").GetProperty("enrolledDeviceCount").GetInt32());
+
+        Assert.Contains("claude-code", op.RootElement.GetProperty("driver").GetString());
+        Assert.Equal("device-1", op.RootElement.GetProperty("android").GetProperty("enrolledDevices")[0].GetString());
+    }
+
+    [Fact]
     public async Task CuAndroid_HeldApprovalRequiresFreshPresenceGate()
     {
         var state = StateWithAndroid("codex");
@@ -260,49 +296,54 @@ public sealed class CuToolsTests
             "android", "tap", "{\"serial\":\"device-1\",\"x\":\"1\",\"y\":\"2\"}", AsHarness("codex")));
         var id = sub.RootElement.GetProperty("actionId").GetString()!;
 
-        using var denied = Json(await ForemanMcpTools.CuApprove(id));
+        using var denied = Json(await ForemanMcpTools.CuApprove(id, AsOperator()));
         Assert.False(denied.RootElement.GetProperty("ok").GetBoolean());
 
         state.CuPresenceApprovalGate = modality => Task.FromResult(modality == CuModality.Android);
-        using var approved = Json(await ForemanMcpTools.CuApprove(id));
+        using var approved = Json(await ForemanMcpTools.CuApprove(id, AsOperator()));
         Assert.True(approved.RootElement.GetProperty("ok").GetBoolean());
     }
 
     [Fact]
     public async Task CuSubmit_Hold_OperatorApprove_PollExecute_Complete()
     {
-        StateWith(CuVerdict.Hold("test", "uncertain"));
-        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "click", "{}"));
+        var state = StateWith(CuVerdict.Hold("test", "uncertain"));
+        state.CuPresenceApprovalGate = _ => Task.FromResult(true);
+        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "click", "{}", AsHarness("codex")));
         Assert.Equal("held", sub.RootElement.GetProperty("state").GetString());
         var actionId = sub.RootElement.GetProperty("actionId").GetString()!;
 
-        using var appr = Json(await ForemanMcpTools.CuApprove(actionId));      // operator approves (CuApprove is async)
+        using var appr = Json(await ForemanMcpTools.CuApprove(actionId, AsOperator()));
         Assert.True(appr.RootElement.GetProperty("ok").GetBoolean());
 
-        using var poll = Json(ForemanMcpTools.CuPollActions(10));              // executor claims it
+        using var poll = Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension")));
         Assert.Equal(1, poll.RootElement.GetProperty("actions").GetArrayLength());
+        var executionToken = poll.RootElement.GetProperty("actions")[0].GetProperty("executionToken").GetString()!;
 
-        using var st = Json(ForemanMcpTools.CuActionStatus(actionId));
+        using var st = Json(ForemanMcpTools.CuActionStatus(actionId, http: AsHarness("codex")));
         Assert.Equal("executing", st.RootElement.GetProperty("state").GetString());
 
-        using var done = Json(ForemanMcpTools.CuCompleteAction(actionId, ok: true, resultJson: null, error: null));
+        using var done = Json(ForemanMcpTools.CuCompleteAction(
+            actionId, executionToken, ok: true, resultJson: null, error: null,
+            http: AsHarness("browser-extension")));
         Assert.True(done.RootElement.GetProperty("accepted").GetBoolean());
 
-        using var st2 = Json(ForemanMcpTools.CuActionStatus(actionId));
+        using var st2 = Json(ForemanMcpTools.CuActionStatus(actionId, http: AsHarness("codex")));
         Assert.Equal("completed", st2.RootElement.GetProperty("state").GetString());
     }
 
     [Fact]
     public async Task CuSubmit_Hold_OperatorReject_NotClaimable()
     {
-        StateWith(CuVerdict.Hold("test", "uncertain"));
-        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "click", "{}"));
+        var state = StateWith(CuVerdict.Hold("test", "uncertain"));
+        state.McpOperatorPresenceGate = _ => Task.FromResult(true);
+        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "click", "{}", AsHarness("codex")));
         var actionId = sub.RootElement.GetProperty("actionId").GetString()!;
 
-        using var rej = Json(ForemanMcpTools.CuReject(actionId, "not now"));
+        using var rej = Json(await ForemanMcpTools.CuReject(actionId, "not now", AsOperator()));
         Assert.True(rej.RootElement.GetProperty("ok").GetBoolean());
 
-        using var poll = Json(ForemanMcpTools.CuPollActions(10));
+        using var poll = Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension")));
         Assert.Equal(0, poll.RootElement.GetProperty("actions").GetArrayLength());
     }
 
@@ -310,7 +351,7 @@ public sealed class CuToolsTests
     public async Task CuSubmit_NotWired_ReportsUnavailable()
     {
         ForemanMcpTools.SetState(new ForemanState());   // Cu is null
-        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{}"));
+        using var doc = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{}", AsHarness("codex")));
         Assert.False(doc.RootElement.GetProperty("accepted").GetBoolean());
     }
 
@@ -318,8 +359,8 @@ public sealed class CuToolsTests
     public async Task CuStatus_SurfacesHeld()
     {
         StateWith(CuVerdict.Hold("test", "why"));
-        _ = await ForemanMcpTools.CuSubmit("browser", "type", "{\"text\":\"x\"}");
-        using var doc = Json(ForemanMcpTools.CuStatus());
+        _ = await ForemanMcpTools.CuSubmit("browser", "type", "{\"text\":\"x\"}", AsHarness("codex"));
+        using var doc = Json(ForemanMcpTools.CuStatus(AsHarness("codex")));
         Assert.True(doc.RootElement.GetProperty("available").GetBoolean());
         Assert.True(doc.RootElement.GetProperty("heldCount").GetInt32() >= 1);
     }
@@ -328,7 +369,7 @@ public sealed class CuToolsTests
     public async Task CuPoll_NonExecutorHarness_Refused_ButBrowserExtensionAllowed()
     {
         StateWith(CuVerdict.Allow("test"));
-        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"https://example.com\"}"));
+        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"https://example.com\"}", AsHarness("codex")));
         Assert.Equal("approved", sub.RootElement.GetProperty("state").GetString());
 
         // A submitting/driving harness (codex) must NOT be able to claim the approved action…
@@ -344,27 +385,30 @@ public sealed class CuToolsTests
     public async Task CuComplete_NonExecutorHarness_Refused()
     {
         StateWith(CuVerdict.Allow("test"));
-        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"https://example.com\"}"));
+        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "navigate", "{\"url\":\"https://example.com\"}", AsHarness("codex")));
         var actionId = sub.RootElement.GetProperty("actionId").GetString()!;
         using var extPoll = Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension")));   // claim -> executing
         Assert.Equal(1, extPoll.RootElement.GetProperty("actions").GetArrayLength());
+        var executionToken = extPoll.RootElement.GetProperty("actions")[0].GetProperty("executionToken").GetString()!;
 
-        using var codexDone = Json(ForemanMcpTools.CuCompleteAction(actionId, true, null, null, AsHarness("codex")));
+        using var codexDone = Json(ForemanMcpTools.CuCompleteAction(
+            actionId, executionToken, true, null, null, AsHarness("codex")));
         Assert.False(codexDone.RootElement.GetProperty("accepted").GetBoolean());
     }
 
     [Fact]
     public async Task CuSetDriver_GatesWhoMaySubmit()
     {
-        StateWith(CuVerdict.Allow("test"));   // browser (desktop is MCP-rejected now); default browser policy = Allow,
-                                              // so this isolates the DRIVER gate.
+        var state = StateWith(CuVerdict.Allow("test"));
+        state.Cu!.SetDriver(null);
+        state.McpOperatorPresenceGate = _ => Task.FromResult(true);
 
         // Default: no driver -> a harness cannot submit (operator-only).
         using var noDrv = Json(await ForemanMcpTools.CuSubmit("browser", "read", "{}", AsHarness("codex")));
         Assert.False(noDrv.RootElement.GetProperty("accepted").GetBoolean());
 
         // Operator designates codex as the driver.
-        using var set = Json(ForemanMcpTools.CuSetDriver("codex"));   // null http = operator
+        using var set = Json(await ForemanMcpTools.CuSetDriver("codex", AsOperator()));
         Assert.True(set.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("codex", set.RootElement.GetProperty("driver").GetString());
 
@@ -378,21 +422,22 @@ public sealed class CuToolsTests
     }
 
     [Fact]
-    public void CuSetDriver_OperatorOnly()
+    public async Task CuSetDriver_OperatorOnly()
     {
         StateWith(CuVerdict.Allow("test"));
-        using var doc = Json(ForemanMcpTools.CuSetDriver("codex", AsHarness("codex")));   // a non-operator harness
+        using var doc = Json(await ForemanMcpTools.CuSetDriver("codex", AsHarness("codex")));
         Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
     }
 
     [Fact]
-    public void CuSetDriver_PersisterReceivesAuthenticatedMcpProvenance()
+    public async Task CuSetDriver_PersisterReceivesAuthenticatedMcpProvenance()
     {
         var state = StateWith(CuVerdict.Allow("test"));
+        state.McpOperatorPresenceGate = _ => Task.FromResult(true);
         SettingsChangeAttribution? observed = null;
         state.Cu!.DriverPersister = _ => observed = SettingsChangeContext.Current;
 
-        using var doc = Json(ForemanMcpTools.CuSetDriver("codex"));
+        using var doc = Json(await ForemanMcpTools.CuSetDriver("claude-code", AsOperator()));
 
         Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
         Assert.NotNull(observed);
@@ -404,20 +449,24 @@ public sealed class CuToolsTests
     }
 
     // ── cu_resolve_vault (the browser-extension executor's reference -> plaintext resolve) ──────────────────
-    private static async Task<string> ExecutingBrowserAction(string text)
+    private static async Task<(string ActionId, string ExecutionToken)> ExecutingBrowserAction(string text)
     {
-        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "type", $"{{\"text\":\"{text}\"}}"));
+        using var sub = Json(await ForemanMcpTools.CuSubmit(
+            "browser", "type", $"{{\"text\":\"{text}\"}}", AsHarness("codex")));
         var actionId = sub.RootElement.GetProperty("actionId").GetString()!;
-        Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension"))).Dispose();   // Approved -> Executing
-        return actionId;
+        using var poll = Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension")));
+        var token = poll.RootElement.GetProperty("actions")[0].GetProperty("executionToken").GetString()!;
+        return (actionId, token);
     }
 
-    private static async Task<string> ExecutingBrowserActionArgs(string argsJson)
+    private static async Task<(string ActionId, string ExecutionToken)> ExecutingBrowserActionArgs(string argsJson)
     {
-        using var sub = Json(await ForemanMcpTools.CuSubmit("browser", "type", argsJson));
+        using var sub = Json(await ForemanMcpTools.CuSubmit(
+            "browser", "type", argsJson, AsHarness("codex")));
         var actionId = sub.RootElement.GetProperty("actionId").GetString()!;
-        Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension"))).Dispose();
-        return actionId;
+        using var poll = Json(ForemanMcpTools.CuPollActions(10, AsHarness("browser-extension")));
+        var token = poll.RootElement.GetProperty("actions")[0].GetProperty("executionToken").GetString()!;
+        return (actionId, token);
     }
 
     [Fact]
@@ -425,10 +474,11 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "s3cret", "ok", false));
-        var actionId = await ExecutingBrowserAction("login {{vault:github.com/password}}");
+        var action = await ExecutingBrowserAction("login {{vault:github.com/password}}");
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension"), "text"));
+            action.ActionId, action.ExecutionToken, "{{vault:github.com/password}}", "github.com",
+            AsHarness("browser-extension"), "text"));
         Assert.True(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("s3cret", res.RootElement.GetProperty("value").GetString());
     }
@@ -438,10 +488,11 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "should-not-reach", "ok", false));
-        var actionId = await ExecutingBrowserAction("x {{vault:example.com/signup}}");   // token smuggled inside other text
+        var action = await ExecutingBrowserAction("x {{vault:example.com/signup}}");   // token smuggled inside other text
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension"), "text"));
+            action.ActionId, action.ExecutionToken, "{{vault:example.com/signup}}", "example.com",
+            AsHarness("browser-extension"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
     }
 
@@ -450,10 +501,11 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "generated-pw", "ok", false));
-        var actionId = await ExecutingBrowserAction("{{vault:example.com/signup}}");
+        var action = await ExecutingBrowserAction("{{vault:example.com/signup}}");
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension"), "text"));
+            action.ActionId, action.ExecutionToken, "{{vault:example.com/signup}}", "example.com",
+            AsHarness("browser-extension"), "text"));
         Assert.True(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.Equal("generated-pw", res.RootElement.GetProperty("value").GetString());
     }
@@ -469,10 +521,11 @@ public sealed class CuToolsTests
             return Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "should-not-reach", "ok", false));
         };
         var token = "{{vault:shop.example/personal01/cardnumber}}";
-        var actionId = await ExecutingBrowserAction("prefix " + token);
+        var action = await ExecutingBrowserAction("prefix " + token);
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, token, "shop.example", AsHarness("browser-extension"), "text"));
+            action.ActionId, action.ExecutionToken, token, "shop.example",
+            AsHarness("browser-extension"), "text"));
 
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.False(resolverCalled);
@@ -489,11 +542,12 @@ public sealed class CuToolsTests
             return Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "should-not-reach", "ok", false));
         };
         const string token = "{{vault:shop.example/personal01/cardnumber}}";
-        var actionId = await ExecutingBrowserActionArgs(
+        var action = await ExecutingBrowserActionArgs(
             $"{{\"value\":\"prefix {token}\",\"x\":\"{token}\"}}");
 
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, token, "shop.example", AsHarness("browser-extension"), "value"));
+            action.ActionId, action.ExecutionToken, token, "shop.example",
+            AsHarness("browser-extension"), "value"));
 
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
         Assert.False(resolverCalled);
@@ -504,11 +558,12 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "x", "ok", false));
-        var actionId = await ExecutingBrowserAction("{{vault:github.com/password}}");
+        var action = await ExecutingBrowserAction("{{vault:github.com/password}}");
 
         // A driving/submitting harness (not the browser-extension executor) can never resolve.
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("codex"), "text"));
+            action.ActionId, action.ExecutionToken, "{{vault:github.com/password}}", "github.com",
+            AsHarness("codex"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
     }
 
@@ -517,11 +572,12 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "x", "ok", false));
-        var actionId = await ExecutingBrowserAction("{{vault:github.com/password}}");
+        var action = await ExecutingBrowserAction("{{vault:github.com/password}}");
 
         // A reference the agent never put in the approved action is refused — no resolving arbitrary credentials.
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:bank.com/password}}", "bank.com", AsHarness("browser-extension"), "text"));
+            action.ActionId, action.ExecutionToken, "{{vault:bank.com/password}}", "bank.com",
+            AsHarness("browser-extension"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());
     }
 
@@ -533,7 +589,8 @@ public sealed class CuToolsTests
         state.Panic = new Foreman.Core.Security.CuPanicState();
         state.Panic.Halt();
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            "any", "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension"), "text"));
+            "any", "invalid-token", "{{vault:github.com/password}}", "github.com",
+            AsHarness("browser-extension"), "text"));
         Assert.False(res.RootElement.GetProperty("ok").GetBoolean());   // panic voids any credential release
     }
 
@@ -542,9 +599,10 @@ public sealed class CuToolsTests
     {
         var state = StateWith(CuVerdict.Allow("test"));
         state.ResolveVaultAsync = (_, _, _) => Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "s3cret", "ok", false));
-        var actionId = await ExecutingBrowserAction("login {{vault:github.com/Password}}");   // capital P in the action
+        var action = await ExecutingBrowserAction("login {{vault:github.com/Password}}");   // capital P in the action
         using var res = Json(await ForemanMcpTools.CuResolveVault(
-            actionId, "{{vault:github.com/password}}", "github.com", AsHarness("browser-extension"), "text"));
+            action.ActionId, action.ExecutionToken, "{{vault:github.com/password}}", "github.com",
+            AsHarness("browser-extension"), "text"));
         Assert.True(res.RootElement.GetProperty("ok").GetBoolean());    // whole-token, case-insensitive match
     }
 
@@ -554,7 +612,7 @@ public sealed class CuToolsTests
         // The resolver reports whether the signup was DEPOSITED for review (vault locked) or committed to the store.
         state.ResolveVaultAsync = (_, _, _) =>
             Task.FromResult<(bool Ok, string? Value, string Reason, bool Queued)>((true, "generated-pw", "ok", queued));
-        var actionId = await ExecutingBrowserAction("{{vault:example.com/signup}}");
+        var action = await ExecutingBrowserAction("{{vault:example.com/signup}}");
 
         ForemanEvent? logged = null;
         void Handler(ForemanEvent e) { if (e.Message.Contains("vault credential for 'example.com'")) logged = e; }
@@ -562,7 +620,8 @@ public sealed class CuToolsTests
         try
         {
             using var res = Json(await ForemanMcpTools.CuResolveVault(
-                actionId, "{{vault:example.com/signup}}", "example.com", AsHarness("browser-extension"), "text"));
+                action.ActionId, action.ExecutionToken, "{{vault:example.com/signup}}", "example.com",
+                AsHarness("browser-extension"), "text"));
             Assert.True(res.RootElement.GetProperty("ok").GetBoolean());
         }
         finally { EventBus.Instance.Unsubscribe(Handler); }

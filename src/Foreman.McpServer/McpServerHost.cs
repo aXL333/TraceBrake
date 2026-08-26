@@ -7,6 +7,7 @@ using Foreman.Core.Models;
 using Foreman.Core.Settings;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -23,6 +24,8 @@ namespace Foreman.McpServer;
 /// </summary>
 public sealed class McpServerHost : IAsyncDisposable
 {
+    internal const long MaxRequestBodyBytes = 1024 * 1024;
+    internal const int MaxPairingBodyBytes = 16 * 1024;
     private readonly ForemanSettings _settings;
     private readonly EventBus _bus;
     private readonly McpAuthToken _authToken = new();
@@ -75,12 +78,14 @@ public sealed class McpServerHost : IAsyncDisposable
             // boundary (see SECURITY.md), and it also keeps TraceBrake off the AV radar (a localhost listener
             // needs no firewall rule and raises no inbound prompt). Do not switch to ListenAnyIP.
             opts.ListenLocalhost(_settings.McpPort);
+            opts.Limits.MaxRequestBodySize = MaxRequestBodyBytes;
         });
 
         builder.Logging.SetMinimumLevel(LogLevel.Warning); // suppress Kestrel noise from tray
 
         builder.Services.AddHttpContextAccessor();   // lets tools read the auth-gate's resolved CallerScope
         builder.Services
+            .AddSingleton(State)
             .AddSingleton(Sessions)
             .AddSingleton<AlertDispatcher>()
             .AddMcpServer()
@@ -90,7 +95,11 @@ public sealed class McpServerHost : IAsyncDisposable
                 // notifications/message proactively without the client polling.
                 options.RunSessionHandler = async (Microsoft.AspNetCore.Http.HttpContext httpCtx, McpServerType server, CancellationToken sessionCt) =>
                 {
-                    var id = Sessions.Register(server);
+                    var caller = httpCtx.Items.TryGetValue(CallerScope.HttpItemKey, out var projected)
+                        && projected is CallerScope { IsAuthenticated: true } scope
+                            ? scope
+                            : CallerScope.Unauthenticated;
+                    var id = Sessions.Register(server, caller);
                     try
                     {
                         await server.RunAsync(sessionCt).ConfigureAwait(false);
@@ -133,13 +142,6 @@ public sealed class McpServerHost : IAsyncDisposable
                     var origin = ctx.Request.Headers.Origin.ToString();
                     var presented = ExtractToken(ctx.Request);
                     var auth = _authToken.Authenticate(presented);
-
-                    // Self-heal paired extension origins: the extension keeps its minted harness token in
-                    // chrome.storage across restarts, but PairedExtensionOrigins may be empty on disk (save
-                    // failed, fresh settings, etc.). A valid liveweave/browser-extension token plus a real
-                    // extension Origin re-adds the origin before the transport gate runs.
-                    if (auth.Ok && IsExtensionHarness(auth.HarnessId) && PairingManager.IsExtensionOrigin(origin))
-                        RememberPairedExtensionOrigin(origin.TrimEnd('/'));
 
                     // Origin, when present, must be loopback or a paired extension. See LoopbackRequestPolicy.
                     var verdict = LoopbackRequestPolicy.Evaluate(
@@ -224,8 +226,9 @@ public sealed class McpServerHost : IAsyncDisposable
             string? response = null, originBody = null, harnessIdBody = null;
             try
             {
-                using var reader = new System.IO.StreamReader(c.Request.Body);
-                using var doc = System.Text.Json.JsonDocument.Parse(await reader.ReadToEndAsync().ConfigureAwait(false));
+                var body = await ReadBoundedBodyAsync(c.Request, MaxPairingBodyBytes, c.RequestAborted).ConfigureAwait(false);
+                if (body is null) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
                 if (doc.RootElement.TryGetProperty("response", out var r)) response = r.GetString();
                 if (doc.RootElement.TryGetProperty("origin", out var o)) originBody = o.GetString();
                 if (doc.RootElement.TryGetProperty("harnessId", out var h)) harnessIdBody = h.GetString();
@@ -251,10 +254,11 @@ public sealed class McpServerHost : IAsyncDisposable
             }
             if (!_settings.PairedExtensionOrigins.Contains(result.Origin!, StringComparer.OrdinalIgnoreCase))
             {
-                _settings.PairedExtensionOrigins.Add(result.Origin!);
-                using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
-                    SettingsChangeOrigin.AuthenticatedMcp, harnessId, "complete-extension-pairing"));
-                try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
+                var remembered = TryRememberPairedExtensionOrigin(
+                    result.Origin!, harnessId, "complete-extension-pairing");
+                if (!remembered.Ok)
+                    return Results.Json(new { ok = false, reason = remembered.Reason },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
             }
             var token = _authToken.MintHarnessToken(harnessId);
             return Results.Json(new { ok = true, origin = result.Origin, token, harnessId });
@@ -275,8 +279,9 @@ public sealed class McpServerHost : IAsyncDisposable
             string? originBody = null, harnessIdBody = null;
             try
             {
-                using var reader = new System.IO.StreamReader(c.Request.Body);
-                using var doc = System.Text.Json.JsonDocument.Parse(await reader.ReadToEndAsync().ConfigureAwait(false));
+                var body = await ReadBoundedBodyAsync(c.Request, MaxPairingBodyBytes, c.RequestAborted).ConfigureAwait(false);
+                if (body is null) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
                 if (doc.RootElement.TryGetProperty("origin", out var o)) originBody = o.GetString();
                 if (doc.RootElement.TryGetProperty("harnessId", out var h)) harnessIdBody = h.GetString();
             }
@@ -297,10 +302,11 @@ public sealed class McpServerHost : IAsyncDisposable
 
             if (!_settings.PairedExtensionOrigins.Contains(result.Origin!, StringComparer.OrdinalIgnoreCase))
             {
-                _settings.PairedExtensionOrigins.Add(result.Origin!);
-                using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
-                    SettingsChangeOrigin.AuthenticatedMcp, harnessId, "auto-pair-extension"));
-                try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
+                var remembered = TryRememberPairedExtensionOrigin(
+                    result.Origin!, harnessId, "auto-pair-extension");
+                if (!remembered.Ok)
+                    return Results.Json(new { ok = false, reason = remembered.Reason },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
             }
             var token = _authToken.MintHarnessToken(harnessId);
             _bus.Publish(new MonitoringNoticeEvent(DateTimeOffset.UtcNow, ForemanSeverity.Medium, "Foreman.Pairing",
@@ -384,20 +390,6 @@ public sealed class McpServerHost : IAsyncDisposable
             : $"TraceBrake can't validate '{id}'s saved token. Open Connect Agent and reconnect '{id}' to re-issue it. " +
               "If you didn't expect this, it could be a forged token from another local process.";
 
-    private static bool IsExtensionHarness(string? harnessId) =>
-        string.Equals(harnessId, "liveweave", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(harnessId, "browser-extension", StringComparison.OrdinalIgnoreCase);
-
-    private void RememberPairedExtensionOrigin(string origin)
-    {
-        if (string.IsNullOrWhiteSpace(origin)) return;
-        if (_settings.PairedExtensionOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return;
-        _settings.PairedExtensionOrigins.Add(origin);
-        using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
-            SettingsChangeOrigin.AuthenticatedMcp, "browser-extension", "remember-paired-origin"));
-        try { SettingsStore.Save(_settings); } catch { /* in-memory allow-list still applies this session */ }
-    }
-
     private static string? ExtractToken(HttpRequest req)
     {
         var auth = req.Headers.Authorization.ToString();
@@ -405,6 +397,43 @@ public sealed class McpServerHost : IAsyncDisposable
             return auth["Bearer ".Length..].Trim();
         var x = req.Headers["X-Foreman-Token"].ToString();
         return string.IsNullOrEmpty(x) ? null : x;
+    }
+
+    private (bool Ok, string? Reason) TryRememberPairedExtensionOrigin(
+        string origin,
+        string harnessId,
+        string operation)
+    {
+        _settings.PairedExtensionOrigins.Add(origin);
+        try
+        {
+            using var provenance = SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
+                SettingsChangeOrigin.AuthenticatedMcp, harnessId, operation));
+            SettingsStore.Save(_settings);
+            if (SettingsStore.LastSaveFault is { } fault)
+                throw new InvalidOperationException(fault);
+            return (true, null);
+        }
+        catch
+        {
+            _settings.PairedExtensionOrigins.RemoveAll(
+                existing => string.Equals(existing, origin, StringComparison.OrdinalIgnoreCase));
+            return (false, "Pairing could not be sealed into TraceBrake settings, so no live origin authority or token was granted. Restore settings authority and retry.");
+        }
+    }
+
+    private static async Task<string?> ReadBoundedBodyAsync(HttpRequest request, int maxBytes, CancellationToken ct)
+    {
+        if (request.ContentLength is > 0 && request.ContentLength > maxBytes) return null;
+        var buffer = new byte[maxBytes + 1];
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = await request.Body.ReadAsync(buffer.AsMemory(total, buffer.Length - total), ct).ConfigureAwait(false);
+            if (read == 0) break;
+            total += read;
+        }
+        return total > maxBytes ? null : Encoding.UTF8.GetString(buffer, 0, total);
     }
 
     private static async Task Deny(HttpContext ctx, int status, string message)

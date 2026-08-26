@@ -247,7 +247,8 @@ public sealed class ForemanSettings
 
     /// <summary>
     /// Per-harness Trust level (1=locked-down … 5=hands-off) that applies a <see cref="TrustPreset"/> over the
-    /// global baseline. Absent = level 3 = today's global behavior (so nothing changes until a slider moves).
+    /// global baseline. Absent = level 3: observation is limited to unlocked sessions and
+    /// state-changing capabilities require approval.
     /// Keyed by harness Id (KnownHarnesses Id or "custom:exe.exe"), case-insensitive — the same key as
     /// <see cref="DisabledHarnesses"/> and BehaviorTracker's harness key.
     /// </summary>
@@ -278,10 +279,10 @@ public sealed class ForemanSettings
     /// Peer-PID binding for per-harness MCP tokens: TraceBrake attributes the connecting loopback process
     /// (peer-PID → harness) and compares it to the token's claimed harness. A MISMATCH (process X replayed
     /// harness Y's token) is ALWAYS logged Critical. This flag controls whether a mismatch is also BLOCKED
-    /// (403). Default off (alert-only) so attribution accuracy can be observed on real connectors before
-    /// enforcing — flip on once trusted. Match and unattributed (lookup miss / race) are always allowed.
+    /// (403). Default on. Match and unattributed (lookup miss / race) are allowed; operators may explicitly
+    /// choose alert-only compatibility mode while investigating connector-attribution issues.
     /// </summary>
-    public bool McpPeerBindingEnforce { get; set; } = false;
+    public bool McpPeerBindingEnforce { get; set; } = true;
 
     /// <summary>
     /// Adaptive noise reduction: learn from the OPERATOR's dismissals (UI acks) and SUGGEST quieting an

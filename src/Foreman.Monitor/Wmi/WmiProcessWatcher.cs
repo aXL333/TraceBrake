@@ -4,6 +4,7 @@ using Foreman.Core.Models;
 using Foreman.Core.Profiles;
 using Foreman.Core.Security;
 using Foreman.Core.Settings;
+using Foreman.Core.Termination;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Management;
@@ -25,6 +26,9 @@ public sealed class WmiProcessWatcher : IDisposable
     private ManagementEventWatcher? _createWatcher;
     private ManagementEventWatcher? _deleteWatcher;
     private bool _started;
+
+    /// <summary>Shared broker ledger used to suppress only exits TraceBrake itself actually initiated.</summary>
+    public ExpectedTerminationLedger? ExpectedTerminations { get; set; }
 
     private readonly object _armLock = new();
     private volatile bool _healthy;
@@ -284,6 +288,7 @@ public sealed class WmiProcessWatcher : IDisposable
             var name = proc["Name"]?.ToString() ?? string.Empty;
             var exitCode = proc["ExitCode"] is uint code ? (int)code : 0;
             var startTime = ParseDmtfDate(proc["CreationDate"]?.ToString());
+            var expected = ExpectedTerminations?.WasExpected(pid, startTime, out _) == true;
 
             var orphans = _tree.OnProcessDeleted(pid, startTime, out var deleted);
 
@@ -297,6 +302,7 @@ public sealed class WmiProcessWatcher : IDisposable
             // positive. When a harness IS found, name it on the alert.
             foreach (var orphan in orphans)
             {
+                if (expected) continue;
                 if (deadParentIsLocalModelHost) continue;
                 var harness = _tree.AttributeOrphanHarness(orphan, deleted);
                 if (harness is null) continue;   // not part of a harness tree — ignore (Windows process churn)
@@ -317,7 +323,7 @@ public sealed class WmiProcessWatcher : IDisposable
             }
 
             // flag nonzero exits from harness-classified processes
-            if (exitCode != 0 && deleted?.IsHarness == true)
+            if (!expected && exitCode != 0 && deleted?.IsHarness == true)
             {
                 _bus.Publish(new NonzeroExitEvent(
                     DateTimeOffset.UtcNow,

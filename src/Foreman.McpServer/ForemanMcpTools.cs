@@ -66,8 +66,12 @@ public static class ForemanMcpTools
         "repository BEFORE opening it in an agent — opening a poisoned repo is enough to run its payload. " +
         "Read-only; makes no network connections.")]
     public static object ScanRepoForAgentConfig(
-        [Description("Absolute path to the repository/directory to scan")] string path)
+        [Description("Absolute path to the repository/directory to scan")] string path,
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.IsAuthenticated)
+            return new { scanned = false, reason = "Authenticated caller identity is required." };
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             return new { scanned = false, reason = "Path does not exist or is not a directory." };
 
@@ -101,7 +105,8 @@ public static class ForemanMcpTools
         var clients = state.GetMcpClients?.Invoke() ?? [];
         // A per-harness token sees only its OWN connection — not a roster of every sibling client.
         if (!caller.IsOperator)
-            clients = clients.Where(c => SseSessionManager.MatchesHarness(c.Name, null, caller.HarnessId ?? string.Empty)).ToList();
+            clients = clients.Where(c => string.Equals(
+                c.AuthenticatedHarnessId, caller.HarnessId, StringComparison.OrdinalIgnoreCase)).ToList();
         return new
         {
             count = clients.Count,
@@ -111,6 +116,7 @@ public static class ForemanMcpTools
                 c.Version,
                 c.Sampling,
                 c.Elicitation,
+                c.AuthenticatedHarnessId,
             }).ToArray(),
         };
     }
@@ -181,6 +187,10 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
+        if (string.IsNullOrWhiteSpace(alertId) || alertId.Length > 64)
+            return new { acknowledged = false, reason = "alertId is required and must be bounded." };
+        if ((reason?.Length ?? 0) > 500)
+            return new { acknowledged = false, reason = "reason exceeds the 500 character limit." };
 
         var evt = state.GetAlert(alertId);
         if (evt is null)
@@ -188,7 +198,7 @@ public static class ForemanMcpTools
 
         // A per-harness token may only acknowledge alerts about ITSELF — it can't clear a sibling's
         // alert to hide its tracks. Unattributable alerts are operator-only.
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { acknowledged = false, reason = "Refused: this per-harness token was presented by a different process than the harness it claims (possible token theft)." };
         if (!caller.IsOperator && !caller.CanAccess(state.ResolveAlertHarness(evt)))
@@ -242,13 +252,15 @@ public static class ForemanMcpTools
         "taskkill/kill yourself. You may reap ONLY processes inside your OWN harness tree; TraceBrake executes the " +
         "kill (you never hold the primitive) and records it as authorised, so it does NOT raise the alarm a raw " +
         "kill would. Targeting a sibling harness or an unattributed PID is refused and escalated to the operator.")]
-    public static object RequestProcessKill(
+    public static async Task<object> RequestProcessKill(
         [Description("PID of the process to terminate")] int pid,
         [Description("Why you want it gone — recorded in the audit log and shown to the operator on cross-tree requests")] string reason = "",
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
+        if ((reason?.Length ?? 0) > 1_000)
+            return new { executed = false, status = "refused", reason = "reason exceeds the 1000 character limit." };
         var why = Core.Security.SecretRedactor.Redact(Truncate(reason ?? string.Empty, 200));
 
         // A stolen / peer-mismatched per-harness token must never drive a kill, even of its own tree.
@@ -271,10 +283,17 @@ public static class ForemanMcpTools
             if (state.KillProcessByPid is null)
                 return new { executed = false, status = "unavailable", reason = "Process control is not wired in this TraceBrake build." };
 
+            var presence = await AuthorizeOperatorMcpMutation(
+                state, caller, http, $"terminate '{target.Name}' (pid {pid}) through the MCP process broker").ConfigureAwait(false);
+            if (!presence.Ok)
+                return new { executed = false, status = "presence_required", reason = presence.Reason };
+
             // Record BEFORE issuing the kill so the detection layer finds the entry the instant the termination
             // events fire — this is what keeps an authorised kill quiet.
             state.ExpectedTerminations.Record(pid, target.StartTime, caller.HarnessId ?? "operator", why);
             var killed = state.KillProcessByPid(pid, target.StartTime);
+            if (!killed)
+                state.ExpectedTerminations.Remove(pid, target.StartTime);
 
             EventBus.Instance.Publish(new InfoEvent(
                 DateTimeOffset.UtcNow, "MCP.RequestProcessKill",
@@ -320,7 +339,7 @@ public static class ForemanMcpTools
         // token identity (mirroring GetMyPermissions) so it can't (a) probe a sibling's enforcement posture
         // through the echoed profileName/profileBlocked/reason, nor (b) publish a sibling-attributed
         // PermissionViolationEvent into the sealed log. Operator (install token) may target any harness.
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.IsOperator) { harnessId = caller.HarnessId; processId = null; profileName = null; }
         var profile = state.ResolveProfile(profileName, harnessId, processId);
         var resolvedHarness = state.ResolveHarnessId(harnessId, processId);
@@ -457,17 +476,21 @@ public static class ForemanMcpTools
         "Resets behavioral escalation metrics for a specific harness back to the Watch level. " +
         "Call this when starting a new, unrelated task to prevent prior session activity from " +
         "contributing to escalation thresholds. Pass your own harnessId (e.g. 'claude-code').")]
-    public static object ResetBehaviorMetrics(
+    public static async Task<object> ResetBehaviorMetrics(
         [Description("The harness ID to reset, e.g. 'claude-code', 'codex', or 'proc:node'")] string harnessId,
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        // A per-harness token may only reset ITS OWN metrics — it can't wipe a sibling's escalation.
-        var caller = CallerScope.From(http);
-        if (!caller.CanMutate)
-            return new { reset = false, harnessId, reason = "Refused: this per-harness token was presented by a different process than the harness it claims (possible token theft)." };
-        if (!caller.IsOperator && !caller.CanAccess(harnessId))
-            return new { reset = false, harnessId, reason = "You can only reset your own harness's metrics." };
+        // A monitored harness is adversarial for this decision: letting it reset even its OWN metrics lets it
+        // clear accumulation immediately before a threshold. Only an operator may reset, and an operator bearer
+        // used over MCP additionally needs a fresh presence assertion.
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.IsOperator)
+            return new { reset = false, harnessId, reason = "Only the operator may reset behavior metrics; a harness cannot clear its own accumulation." };
+        var presence = await AuthorizeOperatorMcpMutation(
+            state, caller, http, $"reset behavior metrics for '{harnessId}'").ConfigureAwait(false);
+        if (!presence.Ok)
+            return new { reset = false, harnessId, reason = presence.Reason };
 
         ResetAndAnnounce(state, harnessId, "MCP.ResetBehaviorMetrics");
         return new { reset = true, harnessId };
@@ -476,7 +499,8 @@ public static class ForemanMcpTools
     [McpServerTool, Description(
         "Announces that the harness is starting a new task. TraceBrake logs the announcement " +
         "in the event log so operators can correlate task boundaries with alert patterns. " +
-        "Optionally resets behavioral metrics if this is a fresh, unrelated task.")]
+        "The resetMetrics argument is retained for compatibility, but remote harness announcements never " +
+        "clear behavioral accumulation; operators use the separately presence-gated reset tool.")]
     public static object ReportTaskStart(
         [Description("Human-readable description of the new task")] string taskDescription,
         [Description("Reset behavioral escalation metrics for a fresh start")] bool resetMetrics = false,
@@ -484,11 +508,28 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
-        EventBus.Instance.Publish(new InfoEvent(
-            DateTimeOffset.UtcNow,
-            "MCP.TaskStart",
-            $"New task announced: {taskDescription[..Math.Min(120, taskDescription.Length)]}"));
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.CanMutate)
+            return new
+            {
+                acknowledged = false,
+                taskDescription = string.Empty,
+                metricsReset = false,
+                harnessId = caller.HarnessId,
+                pendingAskHarnessRequests = 0,
+                reason = "Refused: authenticated caller identity is missing or does not match the presenting process.",
+            };
+
+        taskDescription ??= string.Empty;
+        if (string.IsNullOrWhiteSpace(taskDescription))
+            return new { acknowledged = false, taskDescription = string.Empty, metricsReset = false, harnessId,
+                pendingAskHarnessRequests = 0, reason = "taskDescription is required." };
+        if (taskDescription.Length > 2_000)
+            return new { acknowledged = false, taskDescription = string.Empty, metricsReset = false, harnessId,
+                pendingAskHarnessRequests = 0, reason = "taskDescription exceeds the 2000 character limit." };
+        if (harnessId is not null && !IsPlausibleHarnessId(harnessId.Trim().ToLowerInvariant()))
+            return new { acknowledged = false, taskDescription = string.Empty, metricsReset = false, harnessId,
+                pendingAskHarnessRequests = 0, reason = "harnessId must be a bounded harness id." };
 
         if (!caller.IsOperator)
         {
@@ -496,12 +537,12 @@ public static class ForemanMcpTools
             {
                 return new
                 {
-                    acknowledged = true,
-                    taskDescription,
+                    acknowledged = false,
+                    taskDescription = string.Empty,
                     metricsReset = false,
                     harnessId = caller.HarnessId,
                     pendingAskHarnessRequests = caller.HarnessId is null ? 0 : state.CountAskHarnessRequests(caller.HarnessId),
-                    reason = "Task start recorded, but you can only reset your own harness's metrics.",
+                    reason = "You cannot announce or reset a task for another harness.",
                     hint = "If pendingAskHarnessRequests is non-zero, call list_ask_harness_requests and answer with reply_to_ask_harness_request.",
                 };
             }
@@ -509,21 +550,38 @@ public static class ForemanMcpTools
             harnessId = caller.HarnessId;
         }
 
-        // The metric reset is a STATE MUTATION — gate it behind CanMutate exactly like reset_behavior_metrics,
-        // so a peer-mismatched (stolen) token can't self-exonerate by wiping its escalation through this path
-        // even when peer-binding enforcement is off. (S-1)
-        var didReset = resetMetrics && harnessId is not null && caller.CanMutate;
-        if (didReset)
-            ResetAndAnnounce(state, harnessId!, "MCP.TaskStart");
+        var callerKey = caller.IsOperator ? "operator" : caller.HarnessId ?? "unattributed";
+        if (!state.TryAdmitTaskStart(callerKey, DateTimeOffset.UtcNow, out var retryAfter))
+            return new
+            {
+                acknowledged = false,
+                taskDescription = string.Empty,
+                metricsReset = false,
+                harnessId,
+                pendingAskHarnessRequests = harnessId is null ? 0 : state.CountAskHarnessRequests(harnessId),
+                reason = "Task-start announcement rate limit exceeded.",
+                retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)),
+            };
+
+        var cleanTask = Core.Security.SecretRedactor.Redact(taskDescription.Trim());
+        EventBus.Instance.Publish(new InfoEvent(
+            DateTimeOffset.UtcNow,
+            "MCP.TaskStart",
+            $"New task announced by '{callerKey}': {cleanTask[..Math.Min(120, cleanTask.Length)]}"));
+
+        // Remote task announcements never reset metrics. A malicious harness could otherwise repeatedly announce
+        // fresh tasks to clear accumulation before escalation. Operator resets use reset_behavior_metrics, whose
+        // separate mutation path requires a real authenticated context and fresh presence.
+        const bool didReset = false;
 
         return new
         {
             acknowledged = true,
-            taskDescription,
+            taskDescription = cleanTask,
             metricsReset = didReset,
             harnessId,
-            metricsResetRefused = resetMetrics && harnessId is not null && !caller.CanMutate
-                ? "Metric reset refused: this token was presented by a different process than the harness it claims (possible token theft)."
+            metricsResetRefused = resetMetrics && !didReset
+                ? "Metric reset refused: remote task announcements cannot clear behavior accumulation. The operator may use the presence-gated reset_behavior_metrics tool."
                 : null,
             pendingAskHarnessRequests = harnessId is null
                 ? state.CountAskHarnessRequests()
@@ -547,19 +605,33 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
-        if (!caller.IsOperator && !caller.CanMutate)
-            return new { ok = false, reason = "Refused: this per-harness token was presented by a different process than the harness it claims (possible token theft)." };
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.CanMutate)
+            return new { ok = false, reason = "Refused: authenticated caller identity is missing or does not match the presenting process." };
 
         var target = (targetHarnessId ?? string.Empty).Trim().ToLowerInvariant();
         if (string.IsNullOrEmpty(target)) return new { ok = false, reason = "targetHarnessId is required." };
         if (!IsPlausibleHarnessId(target)) return new { ok = false, reason = "targetHarnessId must be a bounded harness id using letters, digits, '.', '-', '_', or ':'." };
         if (string.IsNullOrWhiteSpace(prompt)) return new { ok = false, reason = "prompt is required." };
+        if ((systemPrompt?.Length ?? 0) > 4_000 || prompt.Length > 12_000
+            || (severity?.Length ?? 0) > 40 || (reason?.Length ?? 0) > 200)
+            return new { ok = false, reason = "Handoff input exceeds the accepted size limit." };
         var sender = caller.IsOperator ? "operator" : (caller.HarnessId ?? string.Empty).Trim().ToLowerInvariant();
         if (!caller.IsOperator && string.IsNullOrWhiteSpace(sender))
             return new { ok = false, reason = "A harness-scoped handoff requires an authenticated harness id." };
         if (!caller.IsOperator && string.Equals(target, sender, StringComparison.OrdinalIgnoreCase))
             return new { ok = false, reason = "A harness-to-harness handoff must target a different harness." };
+
+        var presence = await AuthorizeOperatorMcpMutation(
+            state, caller, http, $"send an operator-privileged cross-harness request to '{target}'").ConfigureAwait(false);
+        if (!presence.Ok) return new { ok = false, reason = presence.Reason };
+        if (!state.TryAdmitHarnessMail(sender, DateTimeOffset.UtcNow, out var retryAfter))
+            return new
+            {
+                ok = false,
+                reason = "Harness-mail rate or pending-request limit exceeded; let existing requests drain first.",
+                retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)),
+            };
 
         // Redact at egress: operator-supplied text persists in the log and relays to the target harness.
         var sys = Core.Security.SecretRedactor.Redact(Truncate(systemPrompt ?? string.Empty, 4000));
@@ -648,22 +720,32 @@ public static class ForemanMcpTools
         if (string.IsNullOrWhiteSpace(response))
             return new { accepted = false, reason = "Response must not be empty." };
 
+        if ((requestId?.Length ?? 0) is < 1 or > 64)
+            return new { accepted = false, reason = "requestId is required and must be bounded." };
+        var boundedRequestId = requestId!.Trim();
+        if (response.Length > 16_000 || (actionTaken?.Length ?? 0) > 1_000)
+            return new { accepted = false, reason = "Response/actionTaken exceeds the accepted size limit." };
+
         // Identity comes from the token: a per-harness caller can only answer ITS OWN prompts, and
         // can't impersonate another harness by passing a different harnessId. (ForemanState still
         // enforces request ownership against this resolved identity.)
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { accepted = false, reason = "Refused: this per-harness token was presented by a different process than the harness it claims (possible token theft)." };
         if (!caller.IsOperator) { harnessId = caller.HarnessId; processId = null; }
 
-        var result = state.ReplyToAskHarnessRequest(requestId, response.Trim(), actionTaken, harnessId, processId);
+        var cleanResponse = Core.Security.SecretRedactor.Redact(response.Trim());
+        var cleanAction = string.IsNullOrWhiteSpace(actionTaken)
+            ? null
+            : Core.Security.SecretRedactor.Redact(actionTaken.Trim());
+        var result = state.ReplyToAskHarnessRequest(boundedRequestId, cleanResponse, cleanAction, harnessId, processId);
         if (!result.Ok)
             return new { accepted = false, reason = result.Reason, request = result.Request is null ? null : AskRequestShape(result.Request) };
 
         EventBus.Instance.Publish(new InfoEvent(
             DateTimeOffset.UtcNow,
             "MCP.AskHarnessReply",
-            $"Ask Harness reply from '{result.Request!.HarnessId}' for alert [{result.Request.AlertId}]: {Truncate(response, 160)}"));
+            $"Ask Harness reply from '{result.Request!.HarnessId}' for alert [{result.Request.AlertId}]: {Truncate(cleanResponse, 160)}"));
 
         return new
         {
@@ -688,7 +770,13 @@ public static class ForemanMcpTools
     {
         var state = _state ?? new ForemanState();
         // A per-harness token reports for ITSELF; only the operator may report on behalf of a named harness.
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.CanMutate)
+            return new { recorded = false, reason = "Authenticated caller identity is required." };
+        if (tokensUsed is < 0 || tokensBudget is < 0)
+            return new { recorded = false, reason = "Token counts cannot be negative." };
+        if ((note?.Length ?? 0) > 500)
+            return new { recorded = false, reason = "note exceeds the 500 character limit." };
         if (!caller.IsOperator) { harnessId = caller.HarnessId; processId = null; }
         var resolved = state.ResolveHarnessId(harnessId, processId);
         if (string.IsNullOrWhiteSpace(resolved))
@@ -697,7 +785,7 @@ public static class ForemanMcpTools
         var usage = new HarnessContextUsage(
             percentRemaining is { } p ? Math.Clamp(p, 0, 100) : null,
             tokensUsed, tokensBudget,
-            string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            string.IsNullOrWhiteSpace(note) ? null : Core.Security.SecretRedactor.Redact(note.Trim()),
             DateTimeOffset.UtcNow);
         state.SetContextUsage(resolved, usage);
         return new { recorded = true, harnessId = resolved, remainingPercent = usage.RemainingPercent, note = usage.Note };
@@ -796,9 +884,15 @@ public static class ForemanMcpTools
 
     [McpServerTool, Description("Returns setup instructions for connecting a supported harness to TraceBrake's MCP server.")]
     public static object GetIntegrationInstructions(
-        [Description("Harness ID, e.g. 'claude-code' or 'codex'")] string harnessId)
+        [Description("Harness ID, e.g. 'claude-code' or 'codex'")] string harnessId,
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
+        var caller = CallerScope.From(http);
+        if (!caller.IsAuthenticated)
+            return new { error = "Authenticated caller identity is required." };
+        if (!caller.IsOperator && !caller.CanAccess(harnessId))
+            return new { error = "You can only request integration guidance for your own harness." };
 
         // LiveWeave is a paired BROWSER EXTENSION, not a config-file harness — it has no MCP config to write.
         // Surface how it connects (pairing) AND how any already-connected agent drives it (the broker tools),
@@ -841,17 +935,15 @@ public static class ForemanMcpTools
             {
                 required = true,
                 scheme = "Bearer",
-                header = "Authorization: Bearer <token>",
-                tokenFile = @"%LocalAppData%\TraceBrake\mcp.token",
-                setupFile = @"%LocalAppData%\TraceBrake\mcp-setup.txt",
-                note = "The /mcp endpoint requires this token in an Authorization header; copy it from the token file into your client config. /health stays open.",
+                header = "Authorization: Bearer <scoped-token-from-Connect-Agent>",
+                note = "Use TraceBrake's Connect Agent UI to mint a token scoped to this harness. Never copy the raw mcp.token operator/recovery secret into an agent config. /health stays open.",
             },
             askHarness = new
             {
                 receive = "Call list_ask_harness_requests with your harnessId or processId to receive pending Ask Harness prompts, including queued audit prompts.",
                 reply = "Call reply_to_ask_harness_request with the requestId and your response so TraceBrake records the answer.",
             },
-            note = "Pass harnessId or processId to TraceBrake MCP tools so permissions, process listings, and Ask Harness requests can be scoped to this harness.",
+            note = "Identity is taken from the scoped bearer token; tool parameters cannot widen it to another harness.",
         };
     }
 
@@ -887,7 +979,7 @@ public static class ForemanMcpTools
                     c.Version,
                     c.Sampling,
                     c.Elicitation,
-                    matchesHarness = SseSessionManager.MatchesHarness(c.Name, null, harnessId),
+                    matchesHarness = string.Equals(c.AuthenticatedHarnessId, harnessId, StringComparison.OrdinalIgnoreCase),
                 })
                 // A scoped caller sees only its own connection, not the names of sibling clients.
                 .Where(c => caller.IsOperator || c.matchesHarness)
@@ -928,7 +1020,7 @@ public static class ForemanMcpTools
                     p.TargetHarnessIds,
                     p.MinimumSeverities,
                     p.Priority,
-                    p.ApiEndpoint,
+                    ApiEndpoint = Core.Security.SecretRedactor.Redact(p.ApiEndpoint),
                     p.Model,
                 })
                 .ToArray(),
@@ -1007,7 +1099,7 @@ public static class ForemanMcpTools
         var connected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var harness in KnownHarnesses.All)
         {
-            if (clients.Any(c => SseSessionManager.MatchesHarness(c.Name, null, harness.Id)))
+            if (clients.Any(c => string.Equals(c.AuthenticatedHarnessId, harness.Id, StringComparison.OrdinalIgnoreCase)))
                 connected.Add(harness.Id);
         }
         return connected;
@@ -1023,7 +1115,7 @@ public static class ForemanMcpTools
         runningHarnessCount = c.RunningHarnessCount,
         mcpConnected = c.McpConnected,
         isFallback = c.IsFallback,
-        c.ApiEndpoint,
+        ApiEndpoint = Core.Security.SecretRedactor.Redact(c.ApiEndpoint),
         c.Model,
     };
 
@@ -1128,9 +1220,17 @@ public static class ForemanMcpTools
     [McpServerTool, Description(
         "Returns LiveWeave webpage builder connection status. The LiveWeave Chrome extension polls TraceBrake " +
         "when paired; agents use liveweave_command to enqueue builder actions.")]
-    public static object LiveweaveStatus()
+    public static object LiveweaveStatus(
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.IsAuthenticated)
+            return new { available = false, reason = "Authenticated caller identity is required." };
+        if (!caller.IsOperator
+            && !string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase)
+            && !state.LiveWeave.CanDrive(caller.HarnessId, isOperator: false))
+            return new { available = false, reason = "LiveWeave status is visible only to its extension, selected driver, or operator." };
         return state.LiveWeave.DescribeStatus();
     }
 
@@ -1150,7 +1250,7 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { ok = false, reason = "Refused: token/process identity mismatch." };
         if (!caller.IsOperator && !string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase))
@@ -1161,15 +1261,12 @@ public static class ForemanMcpTools
             return new { ok = false, reason = "Choose a specific bounded TraceBrake harness id." };
         if (string.IsNullOrWhiteSpace(instruction))
             return new { ok = false, reason = "instruction is required." };
+        if (instruction.Length > 4_000 || (projectTitle?.Length ?? 0) > 240 || (sourceOrigin?.Length ?? 0) > 500)
+            return new { ok = false, reason = "LiveWeave edit request input exceeds the accepted size limit." };
         if (string.IsNullOrWhiteSpace(path) || path.Length > 500 || path.IndexOfAny(['{', '}', '<', '>', '\r', '\n']) >= 0)
             return new { ok = false, reason = "path must be a bounded plain CSS selector." };
         if (string.IsNullOrWhiteSpace(projectId) || projectId.Length > 100)
             return new { ok = false, reason = "projectId is required and must be bounded." };
-
-        // The target chosen in the first-party LiveWeave panel is also the only harness allowed to drive the
-        // resulting edit. This is the same authority the extension already exercises on each poll, but setting it
-        // atomically here prevents a fast Send click from racing the next presence heartbeat.
-        state.LiveWeave.SetDriver(target);
 
         var cleanInstruction = Core.Security.SecretRedactor.Redact(Truncate(instruction.Trim(), 4000));
         var cleanPath = Core.Security.SecretRedactor.Redact(path.Trim());
@@ -1193,6 +1290,21 @@ public static class ForemanMcpTools
                 return new { ok = false, reason = $"selectionJson is invalid: {ex.Message}" };
             }
         }
+
+        var presence = await AuthorizeFreshPresence(
+            state, http, $"originate a LiveWeave edit request for '{target}'").ConfigureAwait(false);
+        if (!presence.Ok) return new { ok = false, reason = presence.Reason };
+        if (!state.TryAdmitHarnessMail("liveweave", DateTimeOffset.UtcNow, out var retryAfter))
+            return new
+            {
+                ok = false,
+                reason = "LiveWeave edit-request rate or pending-request limit exceeded.",
+                retryAfterSeconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)),
+            };
+
+        // Do not mutate the driver until every attacker-controlled field has validated and authorization/rate gates
+        // have passed. A malformed selection must not be able to switch control-plane authority as a side effect.
+        state.LiveWeave.SetDriver(target);
 
         const string systemPrompt =
             "TraceBrake received an operator-initiated LiveWeave creation or edit request. Work only on the active LiveWeave project " +
@@ -1249,7 +1361,7 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { found = false, reason = "Refused: token/process identity mismatch." };
         if (!caller.IsOperator && !string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase))
@@ -1294,12 +1406,14 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { accepted = false, reason = "Refused: token/process identity mismatch." };
 
         if (string.IsNullOrWhiteSpace(action))
             return new { accepted = false, reason = "action is required." };
+        if (action.Length > 64 || !action.All(ch => char.IsAsciiLetterLower(ch) || ch == '_'))
+            return new { accepted = false, reason = "action must be a bounded lowercase action id." };
 
         // Driver gate: LiveWeave only executes commands from the harness its operator chose. No driver means
         // operator-only; "any" is an explicit broad mode.
@@ -1353,13 +1467,20 @@ public static class ForemanMcpTools
 
     [McpServerTool, Description("Returns the result of a LiveWeave command enqueued via liveweave_command.")]
     public static object LiveweaveCommandResult(
-        [Description("commandId from liveweave_command")] string commandId)
+        [Description("commandId from liveweave_command")] string commandId,
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        if (string.IsNullOrWhiteSpace(commandId))
-            return new { found = false, reason = "commandId is required." };
+        var caller = CallerScope.From(http);
+        if (!caller.IsAuthenticated)
+            return new { found = false, reason = "Authenticated caller identity is required." };
+        if (string.IsNullOrWhiteSpace(commandId) || commandId.Length > 64)
+            return new { found = false, reason = "commandId is required and must be bounded." };
 
         var cmd = state.LiveWeave.GetCommand(commandId.Trim());
+        // The unpredictable command id is the receipt capability. Keeping it transferable lets an operator hand
+        // development from one authenticated harness to another without losing the result of an in-flight edit;
+        // callers still cannot enumerate ids, and unauthenticated requests fail above.
         if (cmd is null)
             return new { found = false, reason = "Unknown commandId." };
 
@@ -1387,14 +1508,21 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
-        if (!caller.IsOperator && !string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase))
+        var caller = CallerScope.FromAuthenticated(http);
+        if (!caller.CanMutate)
+            return new { commands = Array.Empty<object>(), reason = "Refused: token/process identity mismatch." };
+        if (!string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase))
             return new { commands = Array.Empty<object>(), reason = "Only the liveweave harness may poll commands." };
 
-        // The extension (the thing being driven) declares which harness it accepts commands from. Empty means
-        // operator-only; "any" is the explicit broad mode. Stored on the broker so liveweave_command rejects a
-        // non-chosen harness up front.
-        state.LiveWeave.SetDriver(driverHarness);
+        // Polling is executor activity, not an authority-grant path. The extension may report its configured
+        // driver for diagnostics, but it cannot widen/switch the broker's driver on each poll. Driver changes occur
+        // only after a fresh-presence LiveWeave edit request (or trusted in-process operator action).
+        var reportedDriver = string.IsNullOrWhiteSpace(driverHarness)
+            ? null
+            : driverHarness.Trim().ToLowerInvariant();
+        var actualDriver = state.LiveWeave.Driver;
+        var driverMismatch = reportedDriver is not null
+            && !string.Equals(reportedDriver == "any" ? "*" : reportedDriver, actualDriver, StringComparison.OrdinalIgnoreCase);
 
         // Tab info is UNTRUSTED extension input that surfaces to the operator UI and the driving harness via
         // liveweave_status — keep ONLY the known fields, capped and secret-redacted (a URL can carry a token),
@@ -1404,6 +1532,8 @@ public static class ForemanMcpTools
         var batch = state.LiveWeave.Poll(limit);
         return new
         {
+            driverMismatch,
+            driver = actualDriver,
             commands = batch.Select(c => new
             {
                 commandId = c.CommandId,
@@ -1422,10 +1552,10 @@ public static class ForemanMcpTools
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { accepted = false, reason = "Refused: token/process identity mismatch." };
-        if (!caller.IsOperator && !string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(caller.HarnessId, "liveweave", StringComparison.OrdinalIgnoreCase))
             return new { accepted = false, reason = "Only the liveweave harness may complete commands." };
 
         // The result flows back to the DRIVING harness (liveweave_command_result) and the operator UI — treat it
@@ -1465,16 +1595,24 @@ public static class ForemanMcpTools
         {
             available = true,
             halted = state.Panic?.IsHalted ?? false,
-            driver = state.Cu.Driver,
-            attentionTab = state.Cu.AttentionTab,   // operator's pinned shared-attention tab (null = no pin)
+            // A scoped harness needs to know whether IT may drive, not the identity of every selected sibling.
+            // Exact routing, attention-tab IDs, local executable paths, and device serials are operator inventory.
+            driver = caller.IsOperator ? state.Cu.Driver : null,
+            canDrive = caller.IsOperator || state.Cu.CanDrive(caller.HarnessId, isOperator: false),
+            attentionTab = caller.IsOperator
+                           || string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase)
+                ? state.Cu.AttentionTab
+                : null,
             android = state.Adb is null
-                ? new { enabled = false, ready = false, executable = (string?)null, enrolledDevices = Array.Empty<string>() }
+                ? new { enabled = false, ready = false, executable = (string?)null,
+                    enrolledDeviceCount = 0, enrolledDevices = Array.Empty<string>() }
                 : new
                 {
                     enabled = true,
                     ready = state.Adb.IsReady,
-                    executable = (string?)state.Adb.ExecutablePath,
-                    enrolledDevices = state.Adb.EnrolledSerials.ToArray(),
+                    executable = caller.IsOperator ? state.Adb.ExecutablePath : null,
+                    enrolledDeviceCount = state.Adb.EnrolledSerials.Count,
+                    enrolledDevices = caller.IsOperator ? state.Adb.EnrolledSerials.ToArray() : Array.Empty<string>(),
                 },
             heldCount = held.Length,
             held = held.Select(i => new { actionId = i.ActionId, modality = i.Action.Modality.ToString().ToLowerInvariant(), verb = i.Action.Verb, reason = i.Verdict?.Reason }).ToArray(),
@@ -1491,11 +1629,13 @@ public static class ForemanMcpTools
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { accepted = false, reason = "Mediated computer use is not available." };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate) return new { accepted = false, reason = "Refused: token/process identity mismatch." };
-        // Mirrors cu_poll/cu_complete: only the browser-extension executor (or the operator) reports the pin.
-        if (!caller.IsOperator && !string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
-            return new { accepted = false, reason = "Only the browser-extension executor (or operator) may set the attention pin." };
+        // This is executor-reported state. The raw operator token is deliberately not an executor credential.
+        if (!string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
+            return new { accepted = false, reason = "Only the browser-extension executor may set the attention pin." };
+        if ((tabId?.Length ?? 0) > 128)
+            return new { accepted = false, reason = "tabId exceeds the accepted size limit." };
         state.Cu.SetAttention(tabId);
         return new { accepted = true, pinnedTab = state.Cu.AttentionTab };
     }
@@ -1518,11 +1658,15 @@ public static class ForemanMcpTools
         if (state.Cu is null)
             return new { accepted = false, reason = "Mediated computer use is not available." };
 
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate)
             return new { accepted = false, reason = "Refused: token/process identity mismatch." };
+        if (caller.IsOperator)
+            return new { accepted = false, reason = "The raw operator bearer token cannot submit computer-use actions; use a scoped harness token." };
         if (string.IsNullOrWhiteSpace(verb))
             return new { accepted = false, reason = "verb is required." };
+        if ((modality?.Length ?? 0) > 32 || verb.Length > 64)
+            return new { accepted = false, reason = "modality/verb exceeds the accepted size limit." };
         if (!Enum.TryParse<Foreman.Core.ComputerUse.CuModality>(modality?.Trim(), ignoreCase: true, out var mod))
             return new { accepted = false, reason = "modality must be 'browser', 'android', or 'desktop'." };
 
@@ -1589,17 +1733,27 @@ public static class ForemanMcpTools
     [McpServerTool, Description("Returns the current state + result of a computer-use action submitted via cu_submit.")]
     public static object CuActionStatus(
         [Description("actionId from cu_submit")] string actionId,
+        [Description("Executor-only execution lease returned by cu_poll_actions")] string? executionToken = null,
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { found = false, reason = "Mediated computer use is not available." };
-        if (string.IsNullOrWhiteSpace(actionId)) return new { found = false, reason = "actionId is required." };
-        var caller = CallerScope.From(http);
+        if (string.IsNullOrWhiteSpace(actionId) || actionId.Length > 64) return new { found = false, reason = "actionId is required and must be bounded." };
+        if ((executionToken?.Length ?? 0) > 128) return new { found = false, reason = "executionToken is invalid." };
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate) return new { found = false, reason = "Refused: token/process identity mismatch." };
         var item = state.Cu.Get(actionId.Trim());
         if (item is null) return new { found = false, reason = "Unknown actionId." };
-        if (!caller.IsOperator
-            && !string.Equals(item.Action.ByHarness, caller.HarnessId, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(executionToken))
+        {
+            var lease = state.Cu.ValidateExecution(actionId.Trim(), Foreman.Core.ComputerUse.CuModality.Browser,
+                caller.HarnessId!, executionToken.Trim());
+            if (!lease.Ok) return new { found = false, reason = lease.Reason };
+            item = lease.Item!;
+        }
+        else if (!caller.IsOperator
+                 && !string.Equals(item.Action.ByHarness, caller.HarnessId, StringComparison.OrdinalIgnoreCase))
             return new { found = false, reason = "Unknown actionId." };
         return new
         {
@@ -1620,17 +1774,17 @@ public static class ForemanMcpTools
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { actions = Array.Empty<object>() };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate) return new { actions = Array.Empty<object>(), reason = "Refused: token/process identity mismatch." };
         // Only the EXECUTOR may claim approved actions. Today that is the browser-extension (and the operator);
         // the desktop CU sidecar harness joins this allow-list when Phase 3 lands. Mirrors the liveweave_poll
         // restriction so a submitting/driving harness cannot also drain (and fake-complete) the approved queue.
-        if (!caller.IsOperator && !string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
             return new { actions = Array.Empty<object>(), reason = "Only the browser-extension executor may claim computer-use actions." };
         // INV-7: desktop CU is in-process only and NEVER crosses MCP. cu_submit already hard-rejects modality=desktop;
         // bar the symmetric claim side too, so even an Approved Desktop item (e.g. via auto-grant) can't be claimed over
         // the network or leak its bound-window descriptors. An in-process executor (not this MCP path) claims Desktop.
-        var batch = state.Cu.Claim(limit, only: Foreman.Core.ComputerUse.CuModality.Browser);
+        var batch = state.Cu.Claim(limit, Foreman.Core.ComputerUse.CuModality.Browser, caller.HarnessId!);
         return new
         {
             actions = batch.Select(i => new
@@ -1639,6 +1793,7 @@ public static class ForemanMcpTools
                 modality = i.Action.Modality.ToString().ToLowerInvariant(),
                 verb = i.Action.Verb,
                 args = i.Action.Args,
+                executionToken = i.ExecutionToken,
             }).ToArray(),
         };
     }
@@ -1646,6 +1801,7 @@ public static class ForemanMcpTools
     [McpServerTool, Description("CU executor only: report the outcome of an executing computer-use action.")]
     public static object CuCompleteAction(
         [Description("actionId being completed")] string actionId,
+        [Description("Execution lease returned by cu_poll_actions")] string executionToken,
         [Description("Whether the action succeeded")] bool ok,
         [Description("Optional JSON result payload")] string? resultJson = null,
         [Description("Error message when ok=false")] string? error = null,
@@ -1653,11 +1809,12 @@ public static class ForemanMcpTools
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { accepted = false, reason = "Mediated computer use is not available." };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate) return new { accepted = false, reason = "Refused: token/process identity mismatch." };
-        if (!caller.IsOperator && !string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
             return new { accepted = false, reason = "Only the browser-extension executor may complete computer-use actions." };
-        if (string.IsNullOrWhiteSpace(actionId)) return new { accepted = false, reason = "actionId is required." };
+        if (string.IsNullOrWhiteSpace(actionId) || actionId.Length > 64) return new { accepted = false, reason = "actionId is required and must be bounded." };
+        if (string.IsNullOrWhiteSpace(executionToken) || executionToken.Length > 128) return new { accepted = false, reason = "executionToken is required and must be bounded." };
 
         object? result = null;
         if (!string.IsNullOrWhiteSpace(resultJson))
@@ -1668,7 +1825,8 @@ public static class ForemanMcpTools
             catch (Exception ex) { return new { accepted = false, reason = $"Invalid resultJson: {ex.Message}" }; }
         }
         var redactedError = Core.Security.SecretRedactor.Redact(Truncate(error ?? string.Empty, 500)) is { Length: > 0 } e ? e : null;
-        var done = state.Cu.Complete(actionId.Trim(), ok, result, redactedError);
+        var done = state.Cu.Complete(actionId.Trim(), ok, result, redactedError,
+            Foreman.Core.ComputerUse.CuModality.Browser, caller.HarnessId!, executionToken.Trim());
         return new { accepted = done.Ok, reason = done.Reason };
     }
 
@@ -1681,6 +1839,7 @@ public static class ForemanMcpTools
         "registered origin (and an allowed harness / the operator), or resolution is refused.")]
     public static async Task<object> CuResolveVault(
         [Description("actionId being executed")] string actionId,
+        [Description("Execution lease returned by cu_poll_actions")] string executionToken,
         [Description("The whole vault reference to resolve (must be one present in the approved action)")] string reference,
         [Description("The live target origin/host you are about to fill into (e.g. the tab host)")] string liveOrigin,
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null,
@@ -1689,28 +1848,27 @@ public static class ForemanMcpTools
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { ok = false, reason = "Mediated computer use is not available." };
         if (state.Panic?.IsHalted == true) return new { ok = false, reason = "Computer use is halted (panic) — no credential release." };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.CanMutate) return new { ok = false, reason = "Refused: token/process identity mismatch." };
         // Executor identity only (browser-extension or operator) — the submitting/driving harness can NEVER resolve. NOTE:
         // this identity is NOT a same-user boundary (the install secret is user-readable; a same-user process could mint a
         // 'browser-extension' token). The real boundary on a credential RELEASE is the mandatory operator presence tap
         // wired in App + the vault being unlocked only when the operator chooses; see docs/vault-design.md.
-        if (!caller.IsOperator && !string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
-            return new { ok = false, reason = "Only the browser-extension executor (or operator) may resolve a vault reference." };
-        if (string.IsNullOrWhiteSpace(actionId) || string.IsNullOrWhiteSpace(reference) ||
+        if (!string.Equals(caller.HarnessId, "browser-extension", StringComparison.OrdinalIgnoreCase))
+            return new { ok = false, reason = "Only the browser-extension executor may resolve a vault reference." };
+        if (string.IsNullOrWhiteSpace(actionId) || string.IsNullOrWhiteSpace(executionToken) || string.IsNullOrWhiteSpace(reference) ||
             string.IsNullOrWhiteSpace(liveOrigin) || string.IsNullOrWhiteSpace(argumentKey))
-            return new { ok = false, reason = "actionId, reference, liveOrigin, and argumentKey are required." };
-        if (reference.Length > 4096 || liveOrigin.Length > 2048 || argumentKey.Length > 64)
-            return new { ok = false, reason = "reference/liveOrigin/argumentKey too long." };
+            return new { ok = false, reason = "actionId, executionToken, reference, liveOrigin, and argumentKey are required." };
+        if (actionId.Length > 64 || executionToken.Length > 128 || reference.Length > 4096 || liveOrigin.Length > 2048 || argumentKey.Length > 64)
+            return new { ok = false, reason = "actionId/executionToken/reference/liveOrigin/argumentKey too long." };
 
         // Bind resolution to a REAL, claimed (executing) browser action AND to a WHOLE {{vault:...}} token the agent
         // actually put in it (case-insensitive) — not a loose substring — so a compromised extension can't resolve
         // arbitrary credentials, substring-forged refs, or refs for actions it never claimed.
-        var item = state.Cu.Get(actionId.Trim());
-        if (item is null || item.Action.Modality != Foreman.Core.ComputerUse.CuModality.Browser)
-            return new { ok = false, reason = "No such browser action." };
-        if (item.State != Foreman.Core.ComputerUse.CuActionState.Executing)
-            return new { ok = false, reason = "Action is not executing (claim it first)." };
+        var lease = state.Cu.ValidateExecution(actionId.Trim(), Foreman.Core.ComputerUse.CuModality.Browser,
+            caller.HarnessId!, executionToken.Trim());
+        if (!lease.Ok) return new { ok = false, reason = lease.Reason };
+        var item = lease.Item!;
         var want = reference.Trim();
         if (!item.Action.Args.TryGetValue(argumentKey.Trim(), out var argumentValue))
             return new { ok = false, reason = "The named argument was not part of the approved action." };
@@ -1735,9 +1893,10 @@ public static class ForemanMcpTools
 
         // Re-check after the (presence-prompting, possibly slow) resolve: a panic halt or the action completing / being
         // rejected mid-tap VOIDS the release — never hand back a secret for an action that is no longer live.
-        if (state.Panic?.IsHalted == true ||
-            state.Cu.Get(actionId.Trim())?.State != Foreman.Core.ComputerUse.CuActionState.Executing)
-            return new { ok = false, reason = "Action was halted or is no longer executing — release voided." };
+        var stillLive = state.Cu.ValidateExecution(actionId.Trim(), Foreman.Core.ComputerUse.CuModality.Browser,
+            caller.HarnessId!, executionToken.Trim());
+        if (state.Panic?.IsHalted == true || !stillLive.Ok)
+            return new { ok = false, reason = "Action was halted or its execution lease is no longer valid — release voided." };
 
         // Audit the EVENT + which field (the reference names it) — NEVER the value. A signup is a WRITE (the first
         // agent-initiated vault write), so it gets a distinct high-signal line. When the vault is LOCKED the write is
@@ -1764,24 +1923,19 @@ public static class ForemanMcpTools
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { ok = false, reason = "Mediated computer use is not available." };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.IsOperator) return new { ok = false, reason = "Only the operator may approve a held computer-use action." };
-        if (string.IsNullOrWhiteSpace(actionId)) return new { ok = false, reason = "actionId is required." };
+        if (string.IsNullOrWhiteSpace(actionId) || actionId.Length > 64) return new { ok = false, reason = "actionId is required and must be bounded." };
         var id = actionId.Trim();
 
-        // INV-16: approving a HELD DESKTOP or ANDROID action requires a FRESH presence tap, not merely the operator bearer token -
-        // the human-in-the-loop the default-Held design rests on must be a live person, not a token holder (the same-user
-        // adversary who minted an operator token must still face the Hello/FIDO2 prompt). Browser approvals retain the
-        // token-only path because the extension independently confines them to the pinned attention tab.
+        // INV-16: approving ANY held action requires a FRESH presence tap, not merely the operator bearer token.
         var item = state.Cu.Get(id);
-        if (item?.Action.Modality is Foreman.Core.ComputerUse.CuModality.Desktop or Foreman.Core.ComputerUse.CuModality.Android)
-        {
-            var gate = state.CuPresenceApprovalGate;
-            var authed = false;
-            if (gate is not null) { try { authed = await gate(item.Action.Modality).ConfigureAwait(false); } catch { authed = false; } }
-            if (!authed)
-                return new { ok = false, reason = $"A presence tap (Windows Hello / FIDO2) is required to approve a {item.Action.Modality.ToString().ToLowerInvariant()} computer-use action and was not provided." };
-        }
+        if (item is null) return new { ok = false, reason = "Unknown action id." };
+        var gate = state.CuPresenceApprovalGate;
+        var authed = false;
+        if (gate is not null) { try { authed = await gate(item.Action.Modality).ConfigureAwait(false); } catch { authed = false; } }
+        if (!authed)
+            return new { ok = false, reason = $"A presence tap (Windows Hello / FIDO2) is required to approve a {item.Action.Modality.ToString().ToLowerInvariant()} computer-use action and was not provided." };
 
         var (ok, reason) = state.Cu.ApproveHeld(id);
         if (ok)
@@ -1791,16 +1945,20 @@ public static class ForemanMcpTools
     }
 
     [McpServerTool, Description("Operator only: REJECT a held computer-use action so it never runs.")]
-    public static object CuReject(
+    public static async Task<object> CuReject(
         [Description("actionId to reject")] string actionId,
         [Description("Optional reason")] string? reason = null,
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { ok = false, reason = "Mediated computer use is not available." };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.IsOperator) return new { ok = false, reason = "Only the operator may reject a held computer-use action." };
-        if (string.IsNullOrWhiteSpace(actionId)) return new { ok = false, reason = "actionId is required." };
+        if (string.IsNullOrWhiteSpace(actionId) || actionId.Length > 64) return new { ok = false, reason = "actionId is required and must be bounded." };
+        if ((reason?.Length ?? 0) > 300) return new { ok = false, reason = "reason exceeds the 300 character limit." };
+        var presence = await AuthorizeOperatorMcpMutation(
+            state, caller, http, $"reject held computer-use action [{actionId.Trim()}]").ConfigureAwait(false);
+        if (!presence.Ok) return new { ok = false, reason = presence.Reason };
         var redacted = string.IsNullOrWhiteSpace(reason) ? null : Core.Security.SecretRedactor.Redact(Truncate(reason!.Trim(), 300));
         var (rok, rreason) = state.Cu.RejectHeld(actionId.Trim(), redacted);
         if (rok)
@@ -1814,20 +1972,28 @@ public static class ForemanMcpTools
         "= operator only (default); a harness id (e.g. 'codex') = just that harness; comma-separated ids (e.g. " +
         "'claude-code,codex') = that shared set; 'any' = every connected harness. The selected driver set is global " +
         "TraceBrake routing, separate from per-harness CU/BU policy, and keeps browser attention + Android enrolment intact.")]
-    public static object CuSetDriver(
+    public static async Task<object> CuSetDriver(
         [Description("Harness id(s) to authorize as the CU driver set; comma-separated allowed; empty = operator-only; 'any' = all harnesses")] string? harnessId = null,
         Microsoft.AspNetCore.Http.IHttpContextAccessor? http = null)
     {
         var state = _state ?? new ForemanState();
         if (state.Cu is null) return new { ok = false, reason = "Mediated computer use is not available." };
-        var caller = CallerScope.From(http);
+        var caller = CallerScope.FromAuthenticated(http);
         if (!caller.IsOperator) return new { ok = false, reason = "Only the operator may set the computer-use driver." };
+        if ((harnessId?.Length ?? 0) > 512)
+            return new { ok = false, reason = "Driver selection exceeds the accepted size limit." };
+        var presence = await AuthorizeOperatorMcpMutation(
+            state, caller, http, $"set the computer-use driver to '{CleanOneLine(harnessId, 120, "operator-only")}'").ConfigureAwait(false);
+        if (!presence.Ok) return new { ok = false, reason = presence.Reason };
+        (bool Ok, string Reason) change;
         using (SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
                    SettingsChangeOrigin.AuthenticatedMcp, "operator-token", "cu_set_driver")))
-            state.Cu.SetDriver(harnessId);
+            change = state.Cu.SetDriver(harnessId);
+        if (!change.Ok)
+            return new { ok = false, reason = change.Reason, driver = state.Cu.Driver };
         EventBus.Instance.Publish(new InfoEvent(DateTimeOffset.UtcNow, "Foreman.ComputerUse",
             $"Operator set the computer-use driver to {(state.Cu.Driver is { } d ? $"'{d}'" : "operator-only")}."));
-        return new { ok = true, driver = state.Cu.Driver };
+        return new { ok = true, reason = change.Reason, driver = state.Cu.Driver };
     }
 
     private static string FormatCuDriver(string? driver)
@@ -1899,12 +2065,18 @@ public static class ForemanMcpTools
     private static IReadOnlyDictionary<string, object?> ParseLiveWeaveParameters(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return new Dictionary<string, object?>();
-        using var doc = JsonDocument.Parse(json);
+        if (json.Length > 256 * 1024)
+            throw new InvalidOperationException("parametersJson exceeds the 256 KiB cap.");
+        using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
         if (doc.RootElement.ValueKind != JsonValueKind.Object)
             throw new InvalidOperationException("parametersJson must be a JSON object.");
         var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (dict.Count >= 64) throw new InvalidOperationException("parametersJson may contain at most 64 fields.");
+            if (prop.Name.Length is < 1 or > 64) throw new InvalidOperationException("parameter names must be 1-64 characters.");
             dict[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
+        }
         return dict;
     }
 
@@ -1929,6 +2101,35 @@ public static class ForemanMcpTools
         request.ReplyText,
         request.ActionTaken,
     };
+
+    private static async Task<(bool Ok, string? Reason)> AuthorizeOperatorMcpMutation(
+        ForemanState state,
+        CallerScope caller,
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http,
+        string detail)
+    {
+        if (!caller.IsOperator) return (true, null);
+        return await AuthorizeFreshPresence(state, http, detail).ConfigureAwait(false);
+    }
+
+    private static async Task<(bool Ok, string? Reason)> AuthorizeFreshPresence(
+        ForemanState state,
+        Microsoft.AspNetCore.Http.IHttpContextAccessor? http,
+        string detail)
+    {
+        if (http is null)
+            return (false, "A real authenticated MCP context and fresh operator presence are required.");
+        var gate = state.McpOperatorPresenceGate;
+        var authed = false;
+        if (gate is not null)
+        {
+            try { authed = await gate(detail).ConfigureAwait(false); }
+            catch { authed = false; }
+        }
+        return authed
+            ? (true, null)
+            : (false, "A fresh operator presence tap (Windows Hello / FIDO2) is required and was not provided.");
+    }
 
     private static string BuildHarnessMailPrompt(
         string sender,

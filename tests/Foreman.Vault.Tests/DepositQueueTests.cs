@@ -86,4 +86,46 @@ public sealed class DepositQueueTests : IDisposable
         Assert.False(q.Enqueue(pub, Dep("overflow.com")));   // cap hit -> refused, appends nothing
         Assert.Equal(DepositQueue.MaxQueued, q.Count);
     }
+
+    [Fact]
+    public void Drain_OversizedForgedLine_IsSkippedWithoutHidingLaterDeposit()
+    {
+        var (pub, priv) = DepositCrypto.GenerateKeyPair();
+        var q = new DepositQueue(_path);
+        Assert.True(q.Enqueue(pub, Dep("good.com")));
+        var good = File.ReadAllText(_path);
+        File.WriteAllText(_path, new string('A', DepositQueue.MaxLineChars + 1) + Environment.NewLine + good);
+
+        var result = q.Drain(priv);
+
+        Assert.Equal(1, result.Failed);
+        Assert.Single(result.Deposits);
+        Assert.Equal("good.com", result.Deposits[0].Origin);
+    }
+
+    [Fact]
+    public void OversizedQueueFile_IsTreatedAsFullAndNotReadIntoMemory()
+    {
+        using (var stream = new FileStream(_path, FileMode.Create, FileAccess.Write, FileShare.None))
+            stream.SetLength(DepositQueue.MaxQueueBytes + 1);
+        var (pub, priv) = DepositCrypto.GenerateKeyPair();
+        var q = new DepositQueue(_path);
+
+        Assert.Equal(DepositQueue.MaxQueued, q.Count);
+        Assert.False(q.Enqueue(pub, Dep("blocked.com")));
+        var result = q.Drain(priv);
+        Assert.Empty(result.Deposits);
+        Assert.Equal(1, result.Failed);
+    }
+
+    [Fact]
+    public void Enqueue_RejectsOversizedAttackerClaims()
+    {
+        var (pub, _) = DepositCrypto.GenerateKeyPair();
+        var q = new DepositQueue(_path);
+        var oversized = Dep(new string('x', DepositQueue.MaxClaimChars + 1));
+
+        Assert.False(q.Enqueue(pub, oversized));
+        Assert.Equal(0, q.Count);
+    }
 }
