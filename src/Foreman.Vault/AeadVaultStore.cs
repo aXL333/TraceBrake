@@ -11,6 +11,7 @@ namespace Foreman.Vault;
 /// </summary>
 public sealed class AeadVaultStore(string path) : IVaultStore
 {
+    public const int MaxEnvelopeBytes = 12 * 1024 * 1024;
     private readonly string _path = path;
     private readonly object _gate = new();
     private string? _password;
@@ -43,7 +44,15 @@ public sealed class AeadVaultStore(string path) : IVaultStore
     /// <summary>Open + decrypt. Throws on wrong master password / wrong key component / tampered file (AES-GCM tag mismatch).</summary>
     public void Open(string masterPassword, byte[] keyComponent)
     {
-        var json = VaultCrypto.Decrypt(File.ReadAllText(_path), masterPassword, keyComponent);
+        string envelope;
+        using (var stream = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            if (stream.Length > MaxEnvelopeBytes)
+                throw new FormatException("vault envelope exceeds the maximum size");
+            using var reader = new StreamReader(stream);
+            envelope = reader.ReadToEnd();
+        }
+        var json = VaultCrypto.Decrypt(envelope, masterPassword, keyComponent);
         var doc = JsonSerializer.Deserialize<VaultDocument>(json) ?? new VaultDocument();
         lock (_gate)
         {

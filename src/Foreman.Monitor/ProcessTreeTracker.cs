@@ -1,4 +1,5 @@
 using Foreman.Core.Models;
+using Foreman.Core.Termination;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 
@@ -9,6 +10,7 @@ namespace Foreman.Monitor;
 /// </summary>
 public sealed class ProcessTreeTracker
 {
+    private readonly IProcessTerminator _terminator;
     private readonly ConcurrentDictionary<string, ProcessRecord> _records = new();
     // secondary lookup: pid → key (last winner wins on reuse)
     private readonly ConcurrentDictionary<int, string> _pidIndex = new();
@@ -18,6 +20,9 @@ public sealed class ProcessTreeTracker
     // nonzero-exit accounting that ONLY OnProcessDeleted performs — reliably wins the race for a process that
     // has only just exited. Touched solely on the IoPoller (prune) thread.
     private readonly HashSet<string> _absentSincePrevPrune = new();
+
+    public ProcessTreeTracker(IProcessTerminator? terminator = null) =>
+        _terminator = terminator ?? new SystemProcessTerminator();
 
     /// <summary>A still-live child left orphaned because the reconciler evicted its (WMI-missed-dead) parent.</summary>
     public sealed record OrphanedChild(ProcessRecord Child, ProcessRecord Parent);
@@ -286,23 +291,77 @@ public sealed class ProcessTreeTracker
             string.Equals(FindHarnessTypeAncestor(r.Pid)?.HarnessType, harnessType, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Terminates every tracked process in the matching harness tree. Driven by the LIVE tree
-    /// (not a stale alert), so each record is current by construction. Skips TraceBrake itself and
-    /// the low system PIDs. Silently ignores processes that have already exited.
+    /// Terminates each root of the matching harness forest with one entire-tree kill. Every root is pinned to its
+    /// tracked start time and re-checked against the live OS process immediately before termination; descendants
+    /// are never killed from stale snapshots one-by-one.
     /// </summary>
-    public void KillHarness(string harnessType)
+    public HarnessTerminationResult KillHarness(
+        string harnessType,
+        ExpectedTerminationLedger? expectedTerminations = null,
+        string expectedBy = "operator:ui",
+        string expectedReason = "operator requested harness-tree termination")
     {
-        foreach (var rec in GetTreeByHarnessType(harnessType).ToList())
+        var snapshot = GetTreeByHarnessType(harnessType).ToList();
+        var memberPids = snapshot.Select(static r => r.Pid).ToHashSet();
+        var byPid = snapshot.ToDictionary(static r => r.Pid);
+        var roots = snapshot.Where(r => !memberPids.Contains(r.ParentPid)).ToList();
+        var terminatedRoots = 0;
+        var protectedRoots = 0;
+
+        foreach (var rec in roots)
         {
-            if (KillGuard.IsProtected(rec.Pid, rec.Name)) continue;   // never the OS, the shell, AV, or TraceBrake's own
-            try
+            // Process.Kill(entireProcessTree:true) does not offer a per-descendant veto. Refuse the whole root if
+            // the tracked subtree contains TraceBrake or a verified OS host, otherwise a harness that launched the
+            // watchdog as its child could make the convenient tree-kill path destroy the safety layer itself.
+            var containsProtectedProcess = snapshot.Any(candidate =>
+                BelongsToRoot(candidate, rec.Pid, byPid)
+                && KillGuard.IsProtected(candidate.Pid, candidate.Name, candidate.ExecutablePath));
+            if (containsProtectedProcess)
             {
-                using var proc = Process.GetProcessById(rec.Pid);
-                proc.Kill(entireProcessTree: rec.IsHarness);
-                SetState(rec.Pid, ProcessState.Terminated);
+                protectedRoots++;
+                continue;
             }
-            catch { /* already exited or access denied */ }
+
+            // Publish the expectation before the OS call so WMI/reconciliation cannot win the race and report the
+            // resulting exit as unexplained. Withdraw it synchronously if the hardened terminator refuses/fails.
+            expectedTerminations?.Record(rec.Pid, rec.StartTime, expectedBy, expectedReason);
+            if (_terminator.TryTerminate(
+                    rec.Pid,
+                    rec.StartTime,
+                    entireProcessTree: true,
+                    livePath => KillGuard.IsProtected(rec.Pid, rec.Name, livePath)))
+            {
+                SetState(rec.Pid, ProcessState.Terminated);
+                terminatedRoots++;
+            }
+            else
+            {
+                expectedTerminations?.Remove(rec.Pid, rec.StartTime);
+            }
         }
+
+        return new HarnessTerminationResult(
+            harnessType,
+            snapshot.Count,
+            roots.Count,
+            terminatedRoots,
+            protectedRoots);
+    }
+
+    private static bool BelongsToRoot(
+        ProcessRecord candidate,
+        int rootPid,
+        IReadOnlyDictionary<int, ProcessRecord> byPid)
+    {
+        var current = candidate;
+        var visited = new HashSet<int>();
+        while (visited.Add(current.Pid))
+        {
+            if (current.Pid == rootPid) return true;
+            if (!byPid.TryGetValue(current.ParentPid, out var parent)) return false;
+            current = parent;
+        }
+        return false;
     }
 
     /// <summary>
@@ -323,19 +382,56 @@ public sealed class ProcessTreeTracker
 
         var rec = GetByPid(pid);
         if (rec is null) return false;                             // not tracked (exited or never seen)
-        if (KillGuard.IsProtected(pid, rec.Name)) return false;    // protected by name (Foreman/guardian/sidecar/OS/AV)
+        if (KillGuard.IsProtected(pid, rec.Name, rec.ExecutablePath)) return false;
         if (Math.Abs((rec.StartTime - expected).TotalSeconds) > 1) return false;  // PID reused since the alert
 
-        try
+        var terminated = _terminator.TryTerminate(
+            pid,
+            rec.StartTime,
+            entireProcessTree: true,
+            livePath => KillGuard.IsProtected(pid, rec.Name, livePath));
+        if (terminated) SetState(pid, ProcessState.Terminated);
+        return terminated;
+    }
+}
+
+/// <summary>
+/// Honest result of a harness-wide termination request. A root is counted as terminated only after the live
+/// process identity and executable path have been re-checked and Windows accepted an entire-tree kill.
+/// </summary>
+public sealed record HarnessTerminationResult(
+    string HarnessType,
+    int MatchingProcessCount,
+    int RootCount,
+    int TerminatedRootCount,
+    int ProtectedRootCount)
+{
+    public int FailedRootCount => Math.Max(0, RootCount - TerminatedRootCount - ProtectedRootCount);
+    public bool HasTargets => RootCount > 0;
+    public bool AnyTerminated => TerminatedRootCount > 0;
+    public bool Complete => HasTargets && TerminatedRootCount == RootCount;
+
+    public string OperatorMessage
+    {
+        get
         {
-            using var proc = Process.GetProcessById(pid);
-            proc.Kill(entireProcessTree: true);
-            SetState(pid, ProcessState.Terminated);
-            return true;
-        }
-        catch
-        {
-            return false;
+            if (!HasTargets)
+                return $"No currently tracked process tree belongs to '{HarnessType}'. It may already have exited.";
+
+            if (Complete)
+                return $"Ended {MatchingProcessCount} tracked process{(MatchingProcessCount == 1 ? "" : "es")} " +
+                       $"across {RootCount} verified tree{(RootCount == 1 ? "" : "s")}.";
+
+            var blockers = new List<string>();
+            if (ProtectedRootCount > 0)
+                blockers.Add($"{ProtectedRootCount} protected root{(ProtectedRootCount == 1 ? " was" : "s were")} refused");
+            if (FailedRootCount > 0)
+                blockers.Add($"{FailedRootCount} root{(FailedRootCount == 1 ? " could" : "s could")} not be re-verified or Windows denied access");
+
+            var prefix = AnyTerminated
+                ? $"Ended {TerminatedRootCount} of {RootCount} verified process trees"
+                : $"Could not end any of the {RootCount} verified process trees";
+            return $"{prefix} for '{HarnessType}': {string.Join("; ", blockers)}.";
         }
     }
 }

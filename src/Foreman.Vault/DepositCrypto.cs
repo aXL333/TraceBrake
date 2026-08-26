@@ -15,6 +15,10 @@ public static class DepositCrypto
 {
     private const int SchemeVersion = 1;
     private const int NonceBytes = 12, TagBytes = 16, SaltBytes = 16;
+    public const int MaxPlaintextBytes = 32 * 1024;
+    public const int MaxCiphertextBytes = MaxPlaintextBytes;
+    private const int MaxPublicKeyBytes = 512;
+    private const int MaxPrivateKeyBytes = 1024;
     // Domain separation for the HKDF step (bound into key derivation; mismatch -> different key -> AES-GCM auth fails).
     private static readonly byte[] Info = Encoding.UTF8.GetBytes("foreman-vault-deposit/v1");
 
@@ -42,6 +46,11 @@ public static class DepositCrypto
     /// <summary>Encrypt <paramref name="plaintext"/> to the deposit public key. Locked-safe: needs only the public key.</summary>
     public static Envelope Encrypt(byte[] publicSpki, string plaintext)
     {
+        plaintext ??= string.Empty;
+        if (publicSpki is not { Length: > 0 and <= MaxPublicKeyBytes })
+            throw new FormatException("deposit public key exceeds the maximum size");
+        if (Encoding.UTF8.GetByteCount(plaintext) > MaxPlaintextBytes)
+            throw new FormatException("deposit plaintext exceeds the maximum size");
         using var eph = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         using var peer = ECDiffieHellman.Create();
         peer.ImportSubjectPublicKeyInfo(publicSpki, out _);
@@ -49,9 +58,10 @@ public static class DepositCrypto
         var salt = RandomNumberGenerator.GetBytes(SaltBytes);
         var nonce = RandomNumberGenerator.GetBytes(NonceBytes);
         var shared = eph.DeriveRawSecretAgreement(peer.PublicKey);                          // ECDH shared point (x)
-        var key = HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, 32, salt, Info);          // -> 32-byte AES-256 key
-        Array.Clear(shared);
-        var pt = Encoding.UTF8.GetBytes(plaintext);
+        byte[] key;
+        try { key = HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, 32, salt, Info); }      // -> 32-byte AES-256 key
+        finally { CryptographicOperations.ZeroMemory(shared); }
+        var pt = Encoding.UTF8.GetBytes(plaintext!);
         try
         {
             var ct = new byte[pt.Length];
@@ -70,20 +80,38 @@ public static class DepositCrypto
     /// Throws <see cref="CryptographicException"/> on a wrong key or any tamper (AES-GCM auth).</summary>
     public static string Decrypt(byte[] privatePkcs8, Envelope env)
     {
+        ArgumentNullException.ThrowIfNull(env);
         if (env.Version != SchemeVersion)
             throw new NotSupportedException($"unsupported deposit envelope version {env.Version}");
+        if (privatePkcs8 is not { Length: > 0 and <= MaxPrivateKeyBytes })
+            throw new FormatException("deposit private key exceeds the maximum size");
+
+        RejectOversizedBase64(env.EphPubB64, MaxPublicKeyBytes, "ephemeral public key");
+        RejectOversizedBase64(env.SaltB64, SaltBytes, "salt");
+        RejectOversizedBase64(env.NonceB64, NonceBytes, "nonce");
+        RejectOversizedBase64(env.TagB64, TagBytes, "tag");
+        RejectOversizedBase64(env.CtB64, MaxCiphertextBytes, "ciphertext");
+
         using var priv = ECDiffieHellman.Create();
         priv.ImportPkcs8PrivateKey(privatePkcs8, out _);
         using var ephPub = ECDiffieHellman.Create();
-        ephPub.ImportSubjectPublicKeyInfo(Convert.FromBase64String(env.EphPubB64), out _);
+        var ephBytes = Convert.FromBase64String(env.EphPubB64);
+        if (ephBytes.Length > MaxPublicKeyBytes) throw new FormatException("deposit ephemeral public key exceeds the maximum size");
+        ephPub.ImportSubjectPublicKeyInfo(ephBytes, out _);
 
         var shared = priv.DeriveRawSecretAgreement(ephPub.PublicKey);
-        var key = HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, 32, Convert.FromBase64String(env.SaltB64), Info);
-        Array.Clear(shared);
+        byte[] key;
+        try
+        {
+            var salt = Convert.FromBase64String(env.SaltB64);
+            if (salt.Length != SaltBytes) throw new FormatException("corrupt deposit envelope (salt size)");
+            key = HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, 32, salt, Info);
+        }
+        finally { CryptographicOperations.ZeroMemory(shared); }
         var nonce = Convert.FromBase64String(env.NonceB64);
         var ct = Convert.FromBase64String(env.CtB64);
         var tag = Convert.FromBase64String(env.TagB64);
-        if (nonce.Length != NonceBytes || tag.Length != TagBytes)
+        if (nonce.Length != NonceBytes || tag.Length != TagBytes || ct.Length > MaxCiphertextBytes)
             throw new FormatException("corrupt deposit envelope (nonce/tag size)");   // align malformed lines with corruption handling
         var pt = new byte[ct.Length];
         try
@@ -95,5 +123,11 @@ public static class DepositCrypto
             return Encoding.UTF8.GetString(pt);
         }
         finally { Array.Clear(key); Array.Clear(pt); }
+    }
+
+    private static void RejectOversizedBase64(string? value, int maxDecodedBytes, string field)
+    {
+        if (value is null || value.Length > ((maxDecodedBytes + 2L) / 3L) * 4L)
+            throw new FormatException($"deposit {field} exceeds the maximum size");
     }
 }

@@ -530,6 +530,58 @@ public sealed class EventLogStoreTests : IDisposable
     }
 
     [Fact]
+    public void Verify_NewlineTerminatedOversizedRecord_IsCorruptionNotCrashDebris()
+    {
+        var store = new EventLogStore(_dir);
+        store.Append(new InfoEvent(T, "src", "one"));
+        File.AppendAllText(store.FilePath, new string('x', EventLogStore.MaxRecordChars + 1) + "\n");
+
+        var result = store.Verify();
+
+        Assert.Equal(VerifyStatus.Corrupt, result.Status);
+        Assert.Equal(1, result.Index);
+    }
+
+    [Fact]
+    public void Verify_UnterminatedOversizedFinalRecord_IsBoundedUnverifiedTail()
+    {
+        var store = new EventLogStore(_dir);
+        store.Append(new InfoEvent(T, "src", "one"));
+        File.AppendAllText(store.FilePath, new string('x', EventLogStore.MaxRecordChars + 1));
+
+        Assert.Equal(VerifyStatus.UnverifiedTail, store.Verify().Status);
+    }
+
+    [Fact]
+    public void Verify_LockedExistingLog_IsUnavailable_NotEmptyOrValid()
+    {
+        var store = new EventLogStore(_dir);
+        store.Append(new InfoEvent(T, "test", "before-lock"));
+        using var locked = new FileStream(store.FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        var result = store.Verify();
+
+        Assert.Equal(VerifyStatus.Unavailable, result.Status);
+        Assert.False(result.Ok);
+        Assert.Contains("could not be verified", result.Message);
+    }
+
+    [Fact]
+    public void TryAppend_OversizedSerializedEvent_FailsWithoutAdvancingTheChain()
+    {
+        var store = new EventLogStore(_dir);
+        store.Append(new InfoEvent(T, "src", "one"));
+
+        var appended = store.TryAppend(
+            new InfoEvent(T, "src", new string('x', EventLogStore.MaxRecordChars + 1)), out var error);
+
+        Assert.False(appended);
+        Assert.Contains("maximum", error);
+        Assert.Equal(VerifyStatus.Valid, store.Verify().Status);
+        Assert.Single(store.Load());
+    }
+
+    [Fact]
     public void Trim_ReanchorsChain_AndRemainsVerifiable()   // regression: trimming must not break the chain
     {
         var store = new EventLogStore(_dir, maxEntries: 10);

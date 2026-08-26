@@ -5,6 +5,8 @@ public enum VerifyStatus
 {
     /// <summary>Empty or missing file — nothing to verify.</summary>
     Empty,
+    /// <summary>The file exists but could not be opened/read; absence of evidence must not be reported as empty.</summary>
+    Unavailable,
     /// <summary>Chain intact (and head seal valid, if a signer expects one).</summary>
     Valid,
     /// <summary>The LAST line is torn/undeserializable — a crash mid-append, not tamper. Benign.</summary>
@@ -29,6 +31,8 @@ public sealed record VerifyResult(VerifyStatus Status, long Count, int Index, st
     public bool Ok => Status is VerifyStatus.Valid or VerifyStatus.Empty or VerifyStatus.UnverifiedTail;
 
     public static VerifyResult Empty { get; } = new(VerifyStatus.Empty, 0, -1, "empty");
+    public static VerifyResult Unavailable(string why) =>
+        new(VerifyStatus.Unavailable, 0, -1, $"event log could not be verified: {why}");
     public static VerifyResult Valid(long count) => new(VerifyStatus.Valid, count, -1, $"valid chain of {count}");
     public static VerifyResult UnverifiedTail(long count) =>
         new(VerifyStatus.UnverifiedTail, count, -1, "last line torn (crash mid-append), chain otherwise intact");

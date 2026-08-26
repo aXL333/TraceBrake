@@ -7,6 +7,7 @@ using Foreman.Core.Models;
 using Foreman.Core.Power;
 using Foreman.Core.Settings;
 using Foreman.McpServer;
+using Foreman.Monitor;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
@@ -85,7 +86,7 @@ public partial class DashboardWindow : Window, IEventSink
     public Func<string?, int>? GetPendingAskCount { get; set; }
     public Func<bool>? GetGameModeActive { get; set; }
     public Func<string?>? GetCuDriver { get; set; }
-    public Action<string?>? SetCuDriver { get; set; }
+    public Func<string?, Task<(bool Ok, string Reason)>>? SetCuDriver { get; set; }
     public Func<string?>? GetCuAttentionTab { get; set; }
 
     /// <summary>An agent's self-reported context/token budget (via the report_usage MCP tool); null if never reported.</summary>
@@ -93,6 +94,9 @@ public partial class DashboardWindow : Window, IEventSink
 
     /// <summary>Polite MCP "pack up cleanly" request for a harness (Idle Harness self-cleanup); wired by TrayController.</summary>
     public Func<string, (bool Ok, string Message)>? RequestHarnessCleanup { get; set; }
+
+    /// <summary>Immediately ends every verified process tree belonging to a harness.</summary>
+    public Func<string, HarnessTerminationResult>? KillHarness { get; set; }
 
     /// <summary>Reset a harness's escalation/behavior metrics; wired by TrayController.</summary>
     public Action<string>? ResetBehaviorMetrics { get; set; }
@@ -567,6 +571,7 @@ public partial class DashboardWindow : Window, IEventSink
             IsConfigured = () => _configuredCache.TryGetValue(harnessId, out var v) && v,
             GetContextUsage = () => GetContextUsage?.Invoke(harnessId),
             RequestCleanup = RequestHarnessCleanup is null ? null : () => RequestHarnessCleanup(harnessId),
+            KillHarness = KillHarness is null ? null : () => KillHarness(harnessId),
             ResetMetrics = ResetBehaviorMetrics is null ? null : () => ResetBehaviorMetrics(harnessId),
         };
 

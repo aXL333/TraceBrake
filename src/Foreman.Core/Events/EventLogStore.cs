@@ -24,6 +24,12 @@ public sealed class EventLogStore
 {
     private static readonly JsonSerializerOptions _json = new() { WriteIndented = false };
 
+    // Event fields ultimately contain data observed from agent-owned processes. Never let one hostile JSONL
+    // record force StreamReader/File.ReadAllLines to materialize an attacker-sized string. This is deliberately
+    // much larger than normal event payloads while still bounding the largest string any read path constructs.
+    public const int MaxRecordChars = 256 * 1024;
+    private const long MaxHeadFileBytes = 64 * 1024;
+
     private readonly string _file;
     private readonly int _maxEntries;
     private readonly long _maxBytes;
@@ -130,7 +136,7 @@ public sealed class EventLogStore
                 nextCount++;
             }
 
-            File.AppendAllText(_file, JsonSerializer.Serialize(redacted, _json) + "\n");
+            File.AppendAllText(_file, SerializeBoundedRecord(redacted) + "\n");
 
             // Advance in-memory state only AFTER the append succeeds. Otherwise a transient write failure would
             // make the next record chain onto a hash that never reached disk, permanently breaking the log.
@@ -167,8 +173,11 @@ public sealed class EventLogStore
     {
         var tail = new Queue<(ForemanEvent Event, int Bytes)>();
         long bytes = 0;
-        foreach (var raw in File.ReadLines(_file))
+        foreach (var bounded in BoundedJsonlReader.Read(_file, MaxRecordChars))
         {
+            if (bounded.Oversized)
+                throw new InvalidDataException($"Event log record at line {bounded.Index} exceeds the maximum size.");
+            var raw = bounded.Text!;
             if (string.IsNullOrWhiteSpace(raw)) continue;
             ForemanEvent evt;
             try
@@ -288,33 +297,45 @@ public sealed class EventLogStore
                     return bounded;
                 }
 
-                var lines = File.ReadAllLines(_file);
-                var events = new List<ForemanEvent>();
-                foreach (var line in lines)
+                // Keep only the tail we can return. A hostile file with millions of tiny records therefore cannot
+                // turn the Log view into an unbounded list allocation even when maxBytes was configured unusually
+                // high. Oversized/corrupt individual records remain on disk as evidence and are skipped for display.
+                var events = new Queue<ForemanEvent>(Math.Min(_maxEntries, 1024));
+                long validRecords = 0;
+                var sawUnreadableRecord = false;
+                foreach (var bounded in BoundedJsonlReader.Read(_file, MaxRecordChars))
                 {
+                    if (bounded.Oversized) { sawUnreadableRecord = true; continue; }
+                    var line = bounded.Text!;
                     if (string.IsNullOrWhiteSpace(line)) continue;
                     try
                     {
                         if (JsonSerializer.Deserialize<ForemanEvent>(line, _json) is { } e)
-                            events.Add(e);
+                        {
+                            validRecords++;
+                            events.Enqueue(e);
+                            if (events.Count > _maxEntries) events.Dequeue();
+                        }
                     }
-                    catch { /* skip a corrupt/partial line */ }
+                    catch { sawUnreadableRecord = true; /* skip a corrupt/partial line */ }
                 }
 
-                MigrateCanonicalDriftIfNeeded(lines, events);
-
-                if (events.Count > _maxEntries)
+                var retained = events.ToArray();
+                if (validRecords > _maxEntries && !sawUnreadableRecord)
                 {
-                    events = events.GetRange(events.Count - _maxEntries, _maxEntries);
-                    Rewrite(events);   // keep the file bounded across restarts (re-anchors the chain)
+                    Rewrite(retained);   // keep the file bounded across restarts (re-anchors the chain)
                 }
-                return events;
+                else if (validRecords <= _maxEntries)
+                {
+                    MigrateCanonicalDriftIfNeeded(retained);
+                }
+                return retained;
             }
             catch { return []; }
         }
     }
 
-    private void MigrateCanonicalDriftIfNeeded(string[] lines, IReadOnlyList<ForemanEvent> events)
+    private void MigrateCanonicalDriftIfNeeded(IReadOnlyList<ForemanEvent> events)
     {
         if (!_chain || events.Count == 0) return;
         var current = Verify();
@@ -324,20 +345,22 @@ public sealed class EventLogStore
             return;
         }
 
-        if (!HistoricalStoredCanonicalChainVerifies(lines))
+        if (!HistoricalStoredCanonicalChainVerifies())
             return;
 
         Rewrite(events);
     }
 
-    private bool HistoricalStoredCanonicalChainVerifies(string[] lines)
+    private bool HistoricalStoredCanonicalChainVerifies()
     {
         string? prevHash = null;
         long chained = 0;
         var started = false;
 
-        foreach (var line in lines)
+        foreach (var bounded in BoundedJsonlReader.Read(_file, MaxRecordChars))
         {
+            if (bounded.Oversized) return false;
+            var line = bounded.Text!;
             if (string.IsNullOrWhiteSpace(line)) continue;
             ForemanEvent? e;
             try { e = JsonSerializer.Deserialize<ForemanEvent>(line, _json); }
@@ -394,8 +417,6 @@ public sealed class EventLogStore
         lock (_lock)
         {
             if (!File.Exists(_file)) return VerifyResult.Empty;
-            string[] lines;
-            try { lines = File.ReadAllLines(_file); } catch { return VerifyResult.Empty; }
 
             string? prevHash = null;   // null until the chain starts (after any legacy prefix)
             long chained = 0;
@@ -404,49 +425,66 @@ public sealed class EventLogStore
             string? priorTemporalSession = null;
             long? priorMonotonicTicks = null;
 
-            for (var i = 0; i < lines.Length; i++)
+            try
             {
-                if (string.IsNullOrWhiteSpace(lines[i])) continue;
-                ForemanEvent? e;
-                try { e = JsonSerializer.Deserialize<ForemanEvent>(lines[i], _json); }
-                catch
+                foreach (var bounded in BoundedJsonlReader.Read(_file, MaxRecordChars))
                 {
-                    return IsLastNonBlank(lines, i)
-                        ? VerifyResult.UnverifiedTail(chained)   // torn LAST line = crash, not tamper
-                        : VerifyResult.Corrupt(i);               // torn MIDDLE line = reorder/insert damage
-                }
-                if (e is null) continue;
-
-                if (!started)
-                {
-                    if (string.IsNullOrEmpty(e.Hash)) continue;   // legacy pre-chain prefix
-                    started = true;
-                    prevHash = LogChain.Genesis;
-                }
-
-                var expected = LogChain.ComputeHash(prevHash, LogChain.Canonicalize(e, _json));
-                if (e.PrevHash != prevHash) return VerifyResult.BrokenLink(i, "prev-hash mismatch (dropped/reordered)");
-                if (e.Hash != expected)     return VerifyResult.BrokenLink(i, "content hash mismatch (edited)");
-                if (e.Sequence is { } seq)
-                {
-                    if (priorSequence is { } prior && seq <= prior)
-                        return VerifyResult.BrokenLink(i, "sequence did not increase");
-                    priorSequence = seq;
-                }
-                if (e.TemporalSessionId is { } session && e.MonotonicTicks is { } mono)
-                {
-                    if (string.Equals(session, priorTemporalSession, StringComparison.Ordinal) &&
-                        priorMonotonicTicks is { } priorMono &&
-                        mono < priorMono)
+                    var i = bounded.Index;
+                    if (bounded.Oversized)
                     {
-                        return VerifyResult.BrokenLink(i, "monotonic clock regressed within session");
+                        // Only a newline-less final record can be crash debris. A newline-terminated oversized
+                        // record was durably committed (or planted) and must surface as corruption, not as an OK
+                        // UnverifiedTail result.
+                        return bounded.Terminated
+                            ? VerifyResult.Corrupt(i)
+                            : VerifyResult.UnverifiedTail(chained);
                     }
-                    priorTemporalSession = session;
-                    priorMonotonicTicks = mono;
+
+                    var line = bounded.Text!;
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    ForemanEvent? e;
+                    try { e = JsonSerializer.Deserialize<ForemanEvent>(line, _json); }
+                    catch
+                    {
+                        return bounded.Terminated
+                            ? VerifyResult.Corrupt(i)
+                            : VerifyResult.UnverifiedTail(chained);
+                    }
+                    if (e is null) continue;
+
+                    if (!started)
+                    {
+                        if (string.IsNullOrEmpty(e.Hash)) continue;   // legacy pre-chain prefix
+                        started = true;
+                        prevHash = LogChain.Genesis;
+                    }
+
+                    var expected = LogChain.ComputeHash(prevHash, LogChain.Canonicalize(e, _json));
+                    if (e.PrevHash != prevHash) return VerifyResult.BrokenLink(i, "prev-hash mismatch (dropped/reordered)");
+                    if (e.Hash != expected)     return VerifyResult.BrokenLink(i, "content hash mismatch (edited)");
+                    if (e.Sequence is { } seq)
+                    {
+                        if (priorSequence is { } prior && seq <= prior)
+                            return VerifyResult.BrokenLink(i, "sequence did not increase");
+                        priorSequence = seq;
+                    }
+                    if (e.TemporalSessionId is { } session && e.MonotonicTicks is { } mono)
+                    {
+                        if (string.Equals(session, priorTemporalSession, StringComparison.Ordinal) &&
+                            priorMonotonicTicks is { } priorMono &&
+                            mono < priorMono)
+                        {
+                            return VerifyResult.BrokenLink(i, "monotonic clock regressed within session");
+                        }
+                        priorTemporalSession = session;
+                        priorMonotonicTicks = mono;
+                    }
+                    prevHash = e.Hash;
+                    chained++;
                 }
-                prevHash = e.Hash;
-                chained++;
             }
+            catch (IOException ex) { return VerifyResult.Unavailable(ex.GetType().Name); }
+            catch (UnauthorizedAccessException ex) { return VerifyResult.Unavailable(ex.GetType().Name); }
 
             if (!started) return VerifyResult.Valid(0);   // empty or all-legacy: nothing chained to verify
 
@@ -483,8 +521,11 @@ public sealed class EventLogStore
         {
             if (!File.Exists(_file)) return;
             RepairUncommittedTail();   // drop a crash-torn final record so this append can't merge onto it
-            foreach (var raw in File.ReadLines(_file))
+            foreach (var bounded in BoundedJsonlReader.Read(_file, MaxRecordChars))
             {
+                if (bounded.Oversized)
+                    throw new InvalidDataException($"Event log record at line {bounded.Index} exceeds the maximum size.");
+                var raw = bounded.Text!;
                 if (string.IsNullOrWhiteSpace(raw)) continue;
                 try
                 {
@@ -571,7 +612,7 @@ public sealed class EventLogStore
                     prev = hash;
                     n++;
                 }
-                sb.Append(JsonSerializer.Serialize(rec, _json)).Append('\n');
+                sb.Append(SerializeBoundedRecord(rec)).Append('\n');
                 last = rec;
             }
             var tmp = _file + ".rewrite.tmp";
@@ -629,11 +670,20 @@ public sealed class EventLogStore
     {
         try
         {
-            return File.Exists(HeadFile)
-                ? JsonSerializer.Deserialize<HeadSeal>(File.ReadAllText(HeadFile), _json)
-                : null;
+            if (!File.Exists(HeadFile)) return null;
+            using var stream = new FileStream(HeadFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.Length > MaxHeadFileBytes) return null;
+            return JsonSerializer.Deserialize<HeadSeal>(stream, _json);
         }
         catch { return null; }
+    }
+
+    private static string SerializeBoundedRecord(ForemanEvent evt)
+    {
+        var serialized = JsonSerializer.Serialize(evt, _json);
+        if (serialized.Length > MaxRecordChars)
+            throw new InvalidDataException($"Event log record exceeds the {MaxRecordChars}-character maximum.");
+        return serialized;
     }
 
     private string[] DetectTemporalAnomalies(DateTimeOffset recordedAt, long monotonicTicks)
@@ -674,10 +724,55 @@ public sealed class EventLogStore
                 _lastMonotonicFrequency);
     }
 
-    private static bool IsLastNonBlank(string[] lines, int i)
+}
+
+internal readonly record struct BoundedJsonlLine(int Index, string? Text, bool Oversized, bool Terminated);
+
+/// <summary>
+/// Fixed-buffer JSONL reader. StreamReader.ReadLine/File.ReadLines allocate a string proportional to an
+/// attacker-controlled line before the caller can reject it; this reader stops retaining characters at the cap
+/// and drains the remainder of that line with constant memory.
+/// </summary>
+internal static class BoundedJsonlReader
+{
+    public static IEnumerable<BoundedJsonlLine> Read(string path, int maxLineChars)
     {
-        for (var j = i + 1; j < lines.Length; j++)
-            if (!string.IsNullOrWhiteSpace(lines[j])) return false;
-        return true;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLineChars);
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true,
+            bufferSize: 4096, leaveOpen: false);
+        var buffer = new char[4096];
+        var line = new StringBuilder(Math.Min(maxLineChars, buffer.Length));
+        var oversized = false;
+        var index = 0;
+        int read;
+        while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            for (var i = 0; i < read; i++)
+            {
+                var ch = buffer[i];
+                if (ch == '\n')
+                {
+                    if (!oversized && line.Length > 0 && line[^1] == '\r') line.Length--;
+                    yield return new BoundedJsonlLine(index++, oversized ? null : line.ToString(), oversized, Terminated: true);
+                    line.Clear();
+                    oversized = false;
+                    continue;
+                }
+
+                if (oversized) continue;
+                if (line.Length >= maxLineChars)
+                {
+                    line.Clear();
+                    oversized = true;
+                    continue;
+                }
+                line.Append(ch);
+            }
+        }
+
+        if (oversized || line.Length > 0)
+            yield return new BoundedJsonlLine(index, oversized ? null : line.ToString(), oversized, Terminated: false);
     }
 }

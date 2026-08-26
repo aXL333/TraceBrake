@@ -15,6 +15,7 @@ public sealed class CuExecutorPump
     private readonly CuBroker _broker;
     private readonly ICuExecutor _executor;
     private readonly int _batch;
+    private readonly string _executionOwner;
     private readonly IHudAck? _hud;
     private readonly Action? _onHudWithheld;
     private DateTimeOffset _lastHudWarn = DateTimeOffset.MinValue;
@@ -25,6 +26,7 @@ public sealed class CuExecutorPump
         _broker = broker;
         _executor = executor;
         _batch = Math.Clamp(batch, 1, 10);
+        _executionOwner = $"inproc:{executor.Modality.ToString().ToLowerInvariant()}:{Guid.NewGuid():N}";
         _hud = hud;
         _onHudWithheld = onHudWithheld;
     }
@@ -55,15 +57,21 @@ public sealed class CuExecutorPump
             }
         }
 
-        var batch = _broker.Claim(_batch, _executor.Modality);
+        var batch = _broker.Claim(_batch, _executor.Modality, _executionOwner);
         var ran = 0;
         foreach (var item in batch)
         {
             if (ct.IsCancellationRequested) break;
+            // Claim may return a batch, then panic/revocation/expiry can invalidate a later item while an earlier one
+            // runs. Re-check the exact owner-bound lease immediately before every physical effect.
+            var live = _broker.ValidateExecution(item.ActionId, _executor.Modality, _executionOwner,
+                item.ExecutionToken ?? string.Empty);
+            if (!live.Ok) continue;
             CuExecResult r;
-            try { r = await _executor.ExecuteAsync(item, ct).ConfigureAwait(false); }
+            try { r = await _executor.ExecuteAsync(live.Item!, ct).ConfigureAwait(false); }
             catch (Exception ex) { r = new CuExecResult(false, null, ex.Message); }
-            _broker.Complete(item.ActionId, r.Ok, r.Result, r.Error);
+            _broker.Complete(item.ActionId, r.Ok, r.Result, r.Error, _executor.Modality,
+                _executionOwner, item.ExecutionToken ?? string.Empty);
             ran++;
         }
         return ran;

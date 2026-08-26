@@ -139,7 +139,7 @@ ln -sfn "$INSTALL_DIR/foreman-desktop" "$BIN_DIR/tracebrake-desktop"
 cat > "$UNIT_DIR/foreman-agent.service" <<'EOF'
 [Unit]
 Description=TraceBrake agent safety monitor
-Documentation=https://github.com/aXL333/Foreman
+Documentation=https://github.com/aXL333/TraceBrake
 After=network.target
 
 [Service]

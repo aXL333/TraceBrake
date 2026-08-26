@@ -6,7 +6,13 @@ using ModelContextProtocol.Protocol;
 namespace Foreman.McpServer;
 
 /// <summary>A connected MCP client's self-announced identity and the capabilities it advertised.</summary>
-public sealed record McpClientInfo(string Name, string? Version, bool Sampling, bool Elicitation);
+public sealed record McpClientInfo(
+    string Name,
+    string? Version,
+    bool Sampling,
+    bool Elicitation,
+    string? AuthenticatedHarnessId = null,
+    bool IsOperator = false);
 
 /// <summary>How an "Ask Harness" request to the offender's own session was delivered.</summary>
 public enum AskOutcome { Sampled, Notified, NoSession }
@@ -23,7 +29,7 @@ public sealed record AskOffenderResult(AskOutcome Outcome, string? ReplyText, st
 /// </summary>
 public sealed class SseSessionManager
 {
-    private sealed record Entry(McpServerType Server, DateTimeOffset At);
+    private sealed record Entry(McpServerType Server, DateTimeOffset At, CallerScope Caller);
     private readonly ConcurrentDictionary<string, Entry> _sessions = new();
     // These are short-lived per-request transport sessions; a disconnect that doesn't Unregister leaks an entry, so
     // an entry older than this is almost certainly dead -> reaped. MaxSessions hard-caps a runaway leak (and the
@@ -64,7 +70,7 @@ public sealed class SseSessionManager
     }
 
     /// <summary>Registers a connected session. Returns the session key for later unregistration.</summary>
-    public string Register(McpServerType server)
+    public string Register(McpServerType server, CallerScope caller)
     {
         Prune();
         // Bound a registration leak: if we're at the cap after pruning, evict the oldest entry.
@@ -74,7 +80,8 @@ public sealed class SseSessionManager
             if (oldest.Key is not null) _sessions.TryRemove(oldest.Key, out _);
         }
         var id = Guid.NewGuid().ToString("N")[..8];
-        _sessions[id] = new Entry(server, DateTimeOffset.UtcNow);
+        _sessions[id] = new Entry(server, DateTimeOffset.UtcNow,
+            caller.IsAuthenticated ? caller : CallerScope.Unauthenticated);
         return id;
     }
 
@@ -88,23 +95,27 @@ public sealed class SseSessionManager
     public IReadOnlyList<McpClientInfo> DescribeSessions()
     {
         Prune();
-        return _sessions.Values.Select(e => e.Server).Select(s => new McpClientInfo(
-            ClientLabel(s) ?? "unknown client",
-            s.ClientInfo?.Version,
-            s.ClientCapabilities?.Sampling is not null,
-            s.ClientCapabilities?.Elicitation is not null)).ToList();
+        return _sessions.Values.Select(e => new McpClientInfo(
+            ClientLabel(e.Server) ?? "unknown client",
+            e.Server.ClientInfo?.Version,
+            e.Server.ClientCapabilities?.Sampling is not null,
+            e.Server.ClientCapabilities?.Elicitation is not null,
+            e.Caller.IsOperator ? null : e.Caller.HarnessId,
+            e.Caller.IsOperator)).ToList();
     }
 
     /// <summary>
     /// Pushes notifications/message to every currently-connected MCP client.
     /// Failures on individual sessions are swallowed so a dead client can't block others.
     /// </summary>
-    public async Task BroadcastNotificationAsync(string level, string logger, object data)
+    public async Task BroadcastNotificationAsync(string level, string logger, object data, string? targetHarnessId)
     {
         Prune();
         if (_sessions.IsEmpty) return;
 
-        var snapshot = _sessions.ToArray();
+        var snapshot = _sessions.ToArray()
+            .Where(item => CanReceiveAlert(item.Value.Caller, targetHarnessId))
+            .ToArray();
         await Task.WhenAll(snapshot.Select(item =>
             SendNotificationAsync(item.Key, item.Value, new { level, logger, data }))).ConfigureAwait(false);
     }
@@ -127,7 +138,7 @@ public sealed class SseSessionManager
     {
         Prune();
         var matches = _sessions.ToArray()
-            .Where(item => MatchesHarness(item.Value.Server.ClientInfo?.Name, item.Value.Server.ClientInfo?.Title, harnessId))
+            .Where(item => CanReceiveAsk(item.Value.Caller, harnessId))
             .ToList();
 
         // 1) true round-trip via sampling, on the first matching session that supports it
@@ -221,4 +232,13 @@ public sealed class SseSessionManager
 
     private static string Norm(string? s) =>
         new string((s ?? "").Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+
+    internal static bool CanReceiveAsk(CallerScope caller, string targetHarnessId) =>
+        caller.IsAuthenticated && !caller.IsOperator
+        && string.Equals(caller.HarnessId, targetHarnessId, StringComparison.OrdinalIgnoreCase);
+
+    internal static bool CanReceiveAlert(CallerScope caller, string? targetHarnessId) =>
+        caller.IsAuthenticated && (caller.IsOperator
+            || (targetHarnessId is not null
+                && string.Equals(caller.HarnessId, targetHarnessId, StringComparison.OrdinalIgnoreCase)));
 }

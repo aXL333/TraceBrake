@@ -24,6 +24,11 @@ public sealed class ForemanState : IEventSink
     private const int MaxAgentReportedAlerts = 200;
     private const int MaxAskHarnessRequests = 200;
     private readonly SuspiciousCommandAlertLimiter _suspiciousCommandAlerts = new();
+    private readonly SuspiciousCommandAlertLimiter _taskStartAnnouncements =
+        new(permitLimit: 8, window: TimeSpan.FromMinutes(1));
+    private readonly SuspiciousCommandAlertLimiter _harnessMail =
+        new(permitLimit: 6, window: TimeSpan.FromMinutes(1));
+    private const int MaxPendingHarnessMailPerSender = 20;
 
     public DateTimeOffset StartTime { get; } = DateTimeOffset.UtcNow;
     public int McpPort { get; set; } = 54321;
@@ -77,6 +82,20 @@ public sealed class ForemanState : IEventSink
     internal bool TryAdmitSuspiciousCommandAlert(string callerKey, DateTimeOffset now, out TimeSpan retryAfter) =>
         _suspiciousCommandAlerts.TryAcquire(callerKey, now, out retryAfter);
 
+    internal bool TryAdmitTaskStart(string callerKey, DateTimeOffset now, out TimeSpan retryAfter) =>
+        _taskStartAnnouncements.TryAcquire(callerKey, now, out retryAfter);
+
+    internal bool TryAdmitHarnessMail(string senderHarnessId, DateTimeOffset now, out TimeSpan retryAfter)
+    {
+        if (!_harnessMail.TryAcquire(senderHarnessId, now, out retryAfter)) return false;
+        var pending = _askRequests.Values.Count(r =>
+            r.Status == AskHarnessStatus.Pending
+            && string.Equals(r.SenderHarnessId, senderHarnessId, StringComparison.OrdinalIgnoreCase));
+        if (pending < MaxPendingHarnessMailPerSender) return true;
+        retryAfter = TimeSpan.FromMinutes(1);
+        return false;
+    }
+
     /// <summary>LiveWeave webpage builder command queue (agent → extension).</summary>
     public LiveWeaveBroker LiveWeave { get; } = new();
 
@@ -93,10 +112,17 @@ public sealed class ForemanState : IEventSink
     /// </summary>
     public Foreman.Core.ComputerUse.AdbBridgeExecutor? Adb { get; set; }
 
-    /// <summary>App-wired presence gate for approving HELD Desktop or Android actions (INV-16): returns true only on a
-    /// fresh Hello/FIDO2 tap, so an operator bearer token alone cannot approve physical input. Null in tests/headless
-    /// means sensitive approvals fail closed. Browser approvals do not use this gate.</summary>
+    /// <summary>App-wired presence gate for approving any HELD computer-use action (INV-16): returns true only on a
+    /// fresh Hello/FIDO2 tap, so an operator bearer token alone cannot approve browser/desktop/Android effects. Null
+    /// in tests/headless means remote approvals fail closed.</summary>
     public Func<Foreman.Core.ComputerUse.CuModality, Task<bool>>? CuPresenceApprovalGate { get; set; }
+
+    /// <summary>
+    /// App-wired fresh-presence gate for high-impact mutations requested with the raw operator bearer token.
+    /// The detail is an operator-facing description only; authority comes from the live Hello/FIDO2 assertion.
+    /// Explicit in-process calls do not traverse this MCP gate.
+    /// </summary>
+    public Func<string, Task<bool>>? McpOperatorPresenceGate { get; set; }
 
     /// <summary>App-wired credential-vault resolver for the browser-extension EXECUTOR (cu_resolve_vault). Inputs:
     /// (text-with-{{vault:}}, live target origin, the action's submitting harness). Applies the per-release presence tap

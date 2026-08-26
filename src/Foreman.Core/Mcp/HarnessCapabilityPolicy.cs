@@ -9,8 +9,8 @@ public enum HarnessCapabilityAccess
 
 public sealed class HarnessCapabilityRestrictions
 {
-    public HarnessCapabilityAccess ComputerUse { get; set; } = HarnessCapabilityAccess.Allow;
-    public HarnessCapabilityAccess BrowserUse { get; set; } = HarnessCapabilityAccess.Allow;
+    public HarnessCapabilityAccess ComputerUse { get; set; } = HarnessCapabilityAccess.AskFirst;
+    public HarnessCapabilityAccess BrowserUse { get; set; } = HarnessCapabilityAccess.AskFirst;
 }
 
 public sealed record HarnessCapabilityDecision(
@@ -20,7 +20,8 @@ public sealed record HarnessCapabilityDecision(
 
 public static class HarnessCapabilityPolicy
 {
-    public static HarnessCapabilityRestrictions Defaults { get; } = new();
+    // Return a fresh value so one caller cannot mutate the process-wide fallback authority for every harness.
+    public static HarnessCapabilityRestrictions Defaults => new();
 
     public static HarnessCapabilityRestrictions Effective(
         IReadOnlyDictionary<string, HarnessCapabilityRestrictions> configured,

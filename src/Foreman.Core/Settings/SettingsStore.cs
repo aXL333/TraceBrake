@@ -17,6 +17,9 @@ public sealed class SettingsStore
     /// no longer silently resets security-relevant posture (mutes, emergency rule IDs) without warning.
     /// </summary>
     public static string? LastLoadFault { get; private set; }
+    public static string? LastSaveFault { get; private set; }
+    private static readonly object _blockedSaveGate = new();
+    private static readonly HashSet<string> _unverifiedLoadPaths = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Supplies the install secret used to HMAC-seal the security-significant settings. Set once by the App at
@@ -48,6 +51,9 @@ public sealed class SettingsStore
     /// </summary>
     public static Action<SettingsSaveAudit>? SaveAuditSink { get; set; }
 
+    /// <summary>Best-effort observer for a save refused before any primary settings bytes were replaced.</summary>
+    public static Action<string>? SaveFailureSink { get; set; }
+
     /// <summary>
     /// The seal verdict from the most recent <see cref="Load()"/>: Tampered means settings.json was edited by
     /// something other than Foreman. A tampered object is never returned: Load first restores a sealed last-known-good
@@ -66,8 +72,10 @@ public sealed class SettingsStore
     public static ForemanSettings Load(string path)
     {
         LastLoadFault = null;
+        LastSaveFault = null;
         LastSealVerdict = SettingsSealVerdict.Unsealed;
         RecoveryRestored = false;
+        lock (_blockedSaveGate) _unverifiedLoadPaths.Remove(Path.GetFullPath(path));
         if (!File.Exists(path))
         {
             var missingSealer = Sealer;
@@ -82,11 +90,13 @@ public sealed class SettingsStore
                                 "last-known-good settings were restored before TraceBrake initialised.";
                 return recovered.Value.Settings;
             }
-            if (SafeHasPriorSealEvidence())
+            if (SafeHasPriorSealEvidence(path))
             {
                 LastSealVerdict = SettingsSealVerdict.Tampered;
                 LastLoadFault = "settings.json was removed after settings sealing had been established. No verified " +
-                                "recovery snapshot was available, so safe defaults were loaded.";
+                                "recovery snapshot was available, so fail-safe defaults were loaded.";
+                BlockSavesForUnverifiedPath(path);
+                return GuardianUnavailableFailSafe();
             }
             return new ForemanSettings();
         }
@@ -116,6 +126,11 @@ public sealed class SettingsStore
                 else
                 {
                     LastSealVerdict = SettingsSealVerdict.Unverified;
+                    LastLoadFault = "Settings matched a retained legacy seal, but the SYSTEM Guardian could not " +
+                                    "re-seal the current projection. The primary was left untouched and fail-safe " +
+                                    "defaults were loaded for this session.";
+                    BlockSavesForUnverifiedPath(path);
+                    return GuardianUnavailableFailSafe();
                 }
                 return settings;
             }
@@ -125,6 +140,16 @@ public sealed class SettingsStore
                 // separate from settings.json so a later direct edit can be reverted before startup consumes it.
                 TryWriteRecovery(path, json, storedSeal!);
                 TryRecordSealEvidence();
+            }
+            else if (LastSealVerdict == SettingsSealVerdict.Unverified)
+            {
+                // A guardian seal that cannot be verified is not authority to initialize sensitive subsystems.
+                // Keep the primary untouched for a later healthy launch, but consume only safe defaults now.
+                LastLoadFault = "The SYSTEM guardian could not verify settings this launch. The settings file was " +
+                                "left untouched, but safe defaults were loaded so unverified computer-use, trust, " +
+                                "monitoring, and evidence settings cannot take effect.";
+                BlockSavesForUnverifiedPath(path);
+                return GuardianUnavailableFailSafe();
             }
             else if (LastSealVerdict == SettingsSealVerdict.Tampered &&
                      TryAdoptAfterLocalSecretRotation(path, json, settings, sealer, secret))
@@ -139,7 +164,7 @@ public sealed class SettingsStore
             {
                 var recovered = TryReadRecovery(path, sealer, secret);
                 var establishedSealWasRemoved = LastSealVerdict == SettingsSealVerdict.Unsealed &&
-                    (recovered is not null || SafeHasPriorSealEvidence());
+                    (recovered is not null || SafeHasPriorSealEvidence(path));
 
                 if (LastSealVerdict != SettingsSealVerdict.Tampered && !establishedSealWasRemoved)
                     return settings;
@@ -157,9 +182,10 @@ public sealed class SettingsStore
                 }
 
                 LastLoadFault = "A direct edit to security-significant settings was rejected before TraceBrake " +
-                                "initialised. No verified recovery snapshot was available, so safe defaults were " +
+                                "initialised. No verified recovery snapshot was available, so fail-safe defaults were " +
                                 "loaded and the attempted file was quarantined with a .tampered suffix.";
-                return new ForemanSettings();
+                BlockSavesForUnverifiedPath(path);
+                return GuardianUnavailableFailSafe();
             }
 
             return settings;
@@ -178,19 +204,37 @@ public sealed class SettingsStore
                                 "settings were restored.";
                 return recovered.Value.Settings;
             }
-            if (SafeHasPriorSealEvidence())
+            if (SafeHasPriorSealEvidence(path))
+            {
                 LastSealVerdict = SettingsSealVerdict.Tampered;
+                BlockSavesForUnverifiedPath(path);
+            }
             LastLoadFault = quarantine is not null
                 ? $"settings.json could not be read ({ex.Message}). It was moved to {Path.GetFileName(quarantine)} " +
                   "and defaults were loaded — re-apply your settings, or restore from the .bad file."
                 : $"settings.json could not be read ({ex.Message}); defaults were loaded.";
-            return new ForemanSettings();
+            return LastSealVerdict == SettingsSealVerdict.Tampered
+                ? GuardianUnavailableFailSafe()
+                : new ForemanSettings();
         }
     }
 
     /// <summary>Saves to an explicit path atomically (temp file + swap), so a crash mid-write can't corrupt it.</summary>
     public static void Save(ForemanSettings settings, string path)
     {
+        LastSaveFault = null;
+        var fullPath = Path.GetFullPath(path);
+        lock (_blockedSaveGate)
+        {
+            if (_unverifiedLoadPaths.Contains(fullPath))
+            {
+                ReportSaveFailure("Settings were not saved because this launch is using Guardian-unverified " +
+                                  "fail-safe defaults. The verified primary remains untouched; restore the " +
+                                  "Guardian service and restart TraceBrake before changing settings.");
+                return;
+            }
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var json = JsonSerializer.Serialize(settings, _opts);
         var currentProjection = SettingsSeal.SecurityProjection(settings);
@@ -210,25 +254,42 @@ public sealed class SettingsStore
             // never a claim that the security posture was unchanged.
         }
 
-        // Write to a sibling temp file, then swap it in. A crash or full disk mid-write leaves the temp
-        // file (ignored on next launch) rather than a half-written settings.json that would be quarantined.
-        WriteAtomically(path, json);
-
-        // Re-seal the security-significant projection so any later edit TraceBrake didn't make is detectable at load.
-        // Through the guardian when set (secret behind the SYSTEM boundary), else the local install-secret path.
-        try
+        // Compute the replacement seal BEFORE publishing any settings bytes. A temporarily unavailable SYSTEM
+        // Guardian is not permission to write an unsealed primary and discover the mismatch only next launch.
+        string? seal;
+        if (Sealer is { } sealer)
         {
-            var seal = Sealer is { } sealer
-                ? sealer.Compute(settings)
-                : IntegritySecret?.Invoke() is { Length: > 0 } secret ? SettingsSeal.Compute(settings, secret) : null;
-            if (seal is not null)
+            seal = sealer.Compute(settings);
+            if (string.IsNullOrWhiteSpace(seal))
             {
-                WriteAtomically(SealPath(path), seal);
-                TryWriteRecovery(path, json, seal);
-                TryRecordSealEvidence();
+                ReportSaveFailure("Settings were not saved because the SYSTEM Guardian could not seal the new " +
+                                  "posture. The existing settings and seal remain authoritative.");
+                return;
             }
         }
-        catch { /* seal is best-effort; a missing seal reads as Unsealed, never blocks the save */ }
+        else if (IntegritySecret?.Invoke() is { Length: > 0 } secret)
+        {
+            seal = SettingsSeal.Compute(settings, secret);
+        }
+        else
+        {
+            if (SafeHasPriorSealEvidence(path))
+            {
+                ReportSaveFailure("Settings were not saved because established seal authority is unavailable.");
+                return;
+            }
+            seal = null; // intentionally unsealed headless/test host with no established authority
+        }
+
+        // Write to sibling temp files and atomically replace each destination. Recovery preserves the prior verified
+        // pair if the process loses power between the two replacements.
+        WriteAtomically(path, json);
+        if (seal is not null)
+        {
+            WriteAtomically(SealPath(path), seal);
+            TryWriteRecovery(path, json, seal);
+            TryRecordSealEvidence();
+        }
 
         try
         {
@@ -243,10 +304,46 @@ public sealed class SettingsStore
         catch { /* evidence delivery must never corrupt or roll back a completed operator save */ }
     }
 
+    private static void ReportSaveFailure(string message)
+    {
+        LastSaveFault = message;
+        try { SaveFailureSink?.Invoke(message); } catch { }
+    }
+
+    private static void BlockSavesForUnverifiedPath(string path)
+    {
+        lock (_blockedSaveGate) _unverifiedLoadPaths.Add(Path.GetFullPath(path));
+    }
+
     private static string ProjectionHash(string? projection)
     {
         if (projection is null) return "none";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(projection)))[..16];
+    }
+
+    private static ForemanSettings GuardianUnavailableFailSafe()
+    {
+        var safe = new ForemanSettings
+        {
+            // Degraded mode observes broadly and preserves both evidence channels. It grants no CU driver or
+            // elevated executable authority, and the armed-without-a-credential presence lock makes every normal
+            // weakening action fail closed until the SYSTEM authority can verify the real settings again.
+            MonitorAllProcesses = true,
+            CuDriver = null,
+            CuTabOverride = false,
+            CuDesktopEnabled = false,
+            CuDriverHostEnabled = false,
+            CuDesktopAutoGrant = false,
+            AllowAutoExtensionPairing = false,
+            EventLogPersist = true,
+            McpPeerBindingEnforce = true,
+        };
+        safe.LogIntegrity.HashChainEnabled = true;
+        safe.LogIntegrity.SealHeadEnabled = true;
+        safe.OsEventLog.Enabled = true;
+        safe.PresenceLock.Enabled = true;
+        safe.PresenceLock.CredentialId = null;
+        return safe;
     }
 
     private static string SealPath(string path) => path + ".seal";
@@ -331,8 +428,17 @@ public sealed class SettingsStore
         catch { return false; }
     }
 
-    private static bool SafeHasPriorSealEvidence()
+    private static bool SafeHasPriorSealEvidence(string path)
     {
+        // The OS-log witness is the durable signal, but surviving primary/recovery seal artefacts are also
+        // evidence that this is not a pristine first run. Treating them as absent would make deleting only the
+        // primary an easier posture-reset path whenever the OS event log is unavailable.
+        try
+        {
+            if (File.Exists(SealPath(path)) || File.Exists(RecoverySealPath(path)))
+                return true;
+        }
+        catch { }
         try { return HasPriorSealEvidence?.Invoke() == true; }
         catch { return false; }
     }

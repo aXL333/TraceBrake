@@ -5,6 +5,8 @@ namespace Foreman.Core.Tests.ComputerUse;
 
 public sealed class AdbBridgeTests
 {
+    private const string AndroidExecutor = "android-test-executor";
+
     private sealed class Allow : IAuditor
     {
         public Task<CuVerdict> JudgeAsync(CuAction a, CuContext c, CancellationToken ct = default) =>
@@ -39,6 +41,9 @@ public sealed class AdbBridgeTests
 
     private static CuAction Android(string verb, Dictionary<string, string>? args = null, string by = "codex") =>
         new(CuModality.Android, verb, args ?? new(), ByHarness: by);
+
+    private static IReadOnlyList<CuBrokerItem> Claim(CuBroker broker, int limit = 5) =>
+        broker.Claim(limit, CuModality.Android, AndroidExecutor);
 
     [Fact]
     public void CommandBuilder_BuildsFixedTapArguments_NoRawCommandString()
@@ -91,7 +96,7 @@ public sealed class AdbBridgeTests
         var item = await broker.SubmitAsync(Android("ui_dump", new() { ["serial"] = "device-1" }), new CuContext("codex"));
 
         Assert.Equal(CuActionState.Approved, item.State);
-        Assert.Single(broker.Claim(5, CuModality.Android));
+        Assert.Single(Claim(broker));
     }
 
     [Fact]
@@ -140,7 +145,7 @@ public sealed class AdbBridgeTests
             Assert.Equal(AdbProcessRunner.ComputeSha256(apk), codex.Action.Arg("apkSha256"));
             Assert.Equal("true", codex.Action.Arg("replace"));
             Assert.Equal("false", claude.Action.Arg("replace"));
-            Assert.Empty(broker.Claim(5, CuModality.Android));
+            Assert.Empty(Claim(broker));
         }
         finally
         {
@@ -159,9 +164,9 @@ public sealed class AdbBridgeTests
             new CuContext("codex"));
 
         Assert.Equal(CuActionState.Held, item.State);
-        Assert.Empty(broker.Claim(5, CuModality.Android));
+        Assert.Empty(Claim(broker));
         Assert.True(broker.ApproveHeld(item.ActionId).Ok);
-        Assert.Single(broker.Claim(5, CuModality.Android));
+        Assert.Single(Claim(broker));
     }
 
     [Fact]
@@ -199,7 +204,7 @@ public sealed class AdbBridgeTests
         broker.SetAndroidDevices(["device-1"]);
         _ = await broker.SubmitAsync(
             Android("screenshot", new() { ["serial"] = "device-1" }), new CuContext("codex"));
-        var executing = broker.Claim(1, CuModality.Android).Single();
+        var executing = Claim(broker, 1).Single();
         var held = await broker.SubmitAsync(
             Android("tap", new() { ["serial"] = "device-1", ["x"] = "1", ["y"] = "2" }), new CuContext("codex"));
 
@@ -207,7 +212,7 @@ public sealed class AdbBridgeTests
 
         Assert.Equal(CuActionState.Rejected, broker.Get(executing.ActionId)!.State);
         Assert.Equal(CuActionState.Rejected, broker.Get(held.ActionId)!.State);
-        Assert.Empty(broker.Claim(5, CuModality.Android));
+        Assert.Empty(Claim(broker));
     }
 
     [Fact]
@@ -224,7 +229,7 @@ public sealed class AdbBridgeTests
 
         Assert.Equal(1, count);
         Assert.Equal(CuActionState.Rejected, broker.Get(approved.ActionId)!.State);
-        Assert.Empty(broker.Claim(5, CuModality.Android));
+        Assert.Empty(Claim(broker));
     }
 
     [Fact]
@@ -316,7 +321,7 @@ public sealed class AdbBridgeTests
             using var executor = new AdbBridgeExecutor(
                 AdbBridgeOptions.Create(@"C:\Android\adb.exe", ["device-1"]),
                 runner);
-            var result = await executor.ExecuteAsync(broker.Claim(1, CuModality.Android).Single());
+            var result = await executor.ExecuteAsync(Claim(broker, 1).Single());
 
             Assert.False(result.Ok);
             Assert.Contains("contents changed", result.Error, StringComparison.OrdinalIgnoreCase);

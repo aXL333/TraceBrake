@@ -1,6 +1,7 @@
 using Foreman.Core.Events;
 using Foreman.Core.Models;
 using Foreman.Core.Settings;
+using Foreman.Core.Termination;
 using System.Runtime.InteropServices;
 
 namespace Foreman.Monitor;
@@ -32,6 +33,9 @@ public sealed class IoPoller : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task? _task;
     private bool _reconcileDegraded;   // true after a reconciliation pass throws, until one succeeds again
+
+    /// <summary>Shared broker ledger used when reconciliation observes an exit whose WMI event was missed.</summary>
+    public ExpectedTerminationLedger? ExpectedTerminations { get; set; }
 
     // A record must survive at least this long before the reconciler may evict it, so a process created
     // just after the live-PID snapshot is never mistaken for dead.
@@ -85,19 +89,7 @@ public sealed class IoPoller : IDisposable
             // OnProcessDeleted, so its surviving children were never flagged orphaned. Emit them now —
             // mirroring the WMI path's local-model-host suppression (a local-model host shedding children
             // on exit is normal teardown, not an abandoned orphan).
-            foreach (var o in outcome.Orphans)
-            {
-                if (KnownHarnesses.IsLocalModelHost(o.Parent.HarnessType)) continue;
-                var harness = _tree.AttributeOrphanHarness(o.Child, o.Parent);
-                if (harness is null) continue;   // not part of a harness tree — ignore (Windows process churn)
-                _bus.Publish(new OrphanDetectedEvent(
-                    DateTimeOffset.UtcNow, "Foreman.Monitor",
-                    $"{o.Child.Name} (pid {o.Child.Pid}) is orphaned — parent {o.Parent.Name} (pid {o.Parent.Pid}) " +
-                    $"exited (its termination event was missed; caught by reconciliation) [harness: {harness.HarnessType ?? harness.Name}]",
-                    o.Child.Pid, o.Child.Name, o.Parent.Pid, o.Parent.Name, o.Child.UptimeMinutes,
-                    harness.Pid, harness.HarnessType, harness.Name)
-                    { ProcessStartTime = o.Child.StartTime });
-            }
+            PublishReconciledOrphans(outcome.Orphans);
 
             // Surface only a meaningful catch-up (the first pass after drift), not routine churn.
             if (outcome.Evicted.Count >= 10)
@@ -121,6 +113,26 @@ public sealed class IoPoller : IDisposable
                 }
                 catch { }
             }
+        }
+    }
+
+    private void PublishReconciledOrphans(IEnumerable<ProcessTreeTracker.OrphanedChild> orphans)
+    {
+        foreach (var o in orphans)
+        {
+            // The expectation is for the parent/root whose brokered termination caused the orphan observation,
+            // not for the still-live child. Checking the child PID would miss the exact process-tree-kill path.
+            if (ExpectedTerminations?.WasExpected(o.Parent.Pid, o.Parent.StartTime, out _) == true) continue;
+            if (KnownHarnesses.IsLocalModelHost(o.Parent.HarnessType)) continue;
+            var harness = _tree.AttributeOrphanHarness(o.Child, o.Parent);
+            if (harness is null) continue;   // not part of a harness tree — ignore (Windows process churn)
+            _bus.Publish(new OrphanDetectedEvent(
+                DateTimeOffset.UtcNow, "Foreman.Monitor",
+                $"{o.Child.Name} (pid {o.Child.Pid}) is orphaned — parent {o.Parent.Name} (pid {o.Parent.Pid}) " +
+                $"exited (its termination event was missed; caught by reconciliation) [harness: {harness.HarnessType ?? harness.Name}]",
+                o.Child.Pid, o.Child.Name, o.Parent.Pid, o.Parent.Name, o.Child.UptimeMinutes,
+                harness.Pid, harness.HarnessType, harness.Name)
+                { ProcessStartTime = o.Child.StartTime });
         }
     }
 

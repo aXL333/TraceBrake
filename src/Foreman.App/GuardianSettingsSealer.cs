@@ -86,6 +86,7 @@ internal sealed class GuardianSettingsSealer : ISettingsSealer
                 // upgrade from looking like tampering on machines that already use the SYSTEM guardian.
                 foreach (var projection in new[]
                          {
+                             SettingsSeal.LegacySecurityProjectionV3(settings),
                              SettingsSeal.LegacySecurityProjectionV2(settings),
                              SettingsSeal.LegacySecurityProjectionV1(settings),
                          })

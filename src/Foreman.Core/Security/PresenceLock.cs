@@ -44,8 +44,8 @@ public sealed class PresenceLockSettings
     /// The enrolled authenticator's credential id (base64url), pinned at enrollment. The presence prompt
     /// asserts THIS credential — Windows Hello (platform: PIN/face/fingerprint) or a roaming FIDO2/U2F key
     /// (YubiKey), whichever the user enrolled; Windows' WebAuthn picker covers all of them. Empty until
-    /// enrolled — the gate then has nothing to prompt and fails closed. (Recovery from a lost authenticator is
-    /// editing this file, the same-user boundary the threat model already concedes.)
+    /// enrolled — the gate then has nothing to prompt and fails closed. Lost-authenticator recovery uses the
+    /// documented verified-settings recovery flow; direct edits are rejected by the settings seal.
     /// </summary>
     public string? CredentialId { get; set; }
 
@@ -58,8 +58,7 @@ public sealed class PresenceLockSettings
     /// FIDO2/U2F key (YubiKey) needs only a single touch, no PIN prompt. Touch alone already stops the rogue-agent
     /// threat (software cannot touch a physical key); UV only adds physical-key-theft hardening, for operators who
     /// opt in. NB: the platform authenticator (Windows Hello) always verifies fully regardless — this setting only
-    /// changes roaming keys. Deliberately NOT part of the settings seal: a silent flip to touch-only cannot help a
-    /// rogue agent (it still can't touch the key), so sealing it would only buy a false tamper verdict on upgrade.
+    /// changes roaming keys. It is covered by the deny-by-default settings seal along with every persisted setting.
     /// </summary>
     public bool RequireUserVerification { get; set; } = false;
 }

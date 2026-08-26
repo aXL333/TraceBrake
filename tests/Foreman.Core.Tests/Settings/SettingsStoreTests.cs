@@ -7,6 +7,13 @@ public sealed class SettingsStoreTests : IDisposable
     private readonly string _dir;
     private readonly string _path;
 
+    private sealed class LegacyThenUnavailableSealer : ISettingsSealer
+    {
+        public string? Compute(ForemanSettings settings) => null;
+        public SettingsSealVerdict Verify(ForemanSettings settings, string? storedSeal) =>
+            SettingsSealVerdict.LegacySealed;
+    }
+
     public SettingsStoreTests()
     {
         _dir = Path.Combine(Path.GetTempPath(), "foreman-settings-" + Guid.NewGuid().ToString("N")[..8]);
@@ -22,6 +29,7 @@ public sealed class SettingsStoreTests : IDisposable
         SettingsStore.RecordSealEvidence = null;
         SettingsStore.IntegritySecretRecentlyRegenerated = null;
         SettingsStore.SaveAuditSink = null;
+        SettingsStore.SaveFailureSink = null;
         try { Directory.Delete(_dir, true); } catch { }
     }
 
@@ -60,6 +68,23 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void DeletedPrimary_WithSealButNoRecovery_LoadsFailSafeAndBlocksOverwrite()
+    {
+        File.WriteAllText(_path + ".seal", SettingsSeal.LocalScheme + "orphaned-evidence");
+
+        var loaded = SettingsStore.Load(_path);
+        Assert.Null(loaded.CuDriver);
+        loaded.CuDriver = "attacker";
+        SettingsStore.Save(loaded, _path);
+
+        Assert.Equal(SettingsSealVerdict.Tampered, SettingsStore.LastSealVerdict);
+        Assert.True(loaded.PresenceLock.Enabled);
+        Assert.True(loaded.MonitorAllProcesses);
+        Assert.False(File.Exists(_path));
+        Assert.NotNull(SettingsStore.LastSaveFault);
+    }
+
+    [Fact]
     public void DeletedPrimary_WithVerifiedRecovery_RestoresSealedPosture()
     {
         SettingsStore.IntegritySecret = () => "test-install-secret";
@@ -78,7 +103,7 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void GuardianSeal_WhenAuthorityTemporarilyUnavailable_IsNotQuarantined()
+    public void GuardianSeal_WhenAuthorityTemporarilyUnavailable_LoadsSafeDefaultsWithoutQuarantine()
     {
         var settings = new ForemanSettings { CuDriver = "codex" };
         settings.PresenceLock.Enabled = true;
@@ -90,9 +115,60 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.Equal(SettingsSealVerdict.Unverified, SettingsStore.LastSealVerdict);
         Assert.True(loaded.PresenceLock.Enabled);
-        Assert.Equal("codex", loaded.CuDriver);
+        Assert.Null(loaded.PresenceLock.CredentialId);
+        Assert.True(loaded.MonitorAllProcesses);
+        Assert.True(loaded.EventLogPersist);
+        Assert.True(loaded.LogIntegrity.HashChainEnabled);
+        Assert.True(loaded.OsEventLog.Enabled);
+        Assert.Null(loaded.CuDriver);
+        Assert.False(loaded.AllowAutoExtensionPairing);
+        Assert.True(loaded.McpPeerBindingEnforce);
         Assert.True(File.Exists(_path));
         Assert.Empty(Directory.GetFiles(_dir, "*.tampered"));
+        Assert.Contains("safe defaults", SettingsStore.LastLoadFault);
+    }
+
+    [Fact]
+    public void GuardianUnverifiedFailSafe_CannotOverwriteTheUntouchedPrimary()
+    {
+        var original = new ForemanSettings { CuDriver = "codex", McpPort = 49160 };
+        var originalJson = System.Text.Json.JsonSerializer.Serialize(original, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+        });
+        File.WriteAllText(_path, originalJson);
+        File.WriteAllText(_path + ".seal", SettingsSeal.GuardianScheme + "unavailable-test-seal");
+        SettingsStore.Sealer = new UnavailableGuardianSettingsSealer(() => "local-secret");
+        var failure = string.Empty;
+        SettingsStore.SaveFailureSink = message => failure = message;
+
+        var failSafe = SettingsStore.Load(_path);
+        failSafe.McpPort = 49999;
+        SettingsStore.Save(failSafe, _path);
+
+        Assert.Equal(originalJson, File.ReadAllText(_path));
+        Assert.Contains("remains untouched", failure);
+        Assert.NotNull(SettingsStore.LastSaveFault);
+    }
+
+    [Fact]
+    public void LegacySealUpgradeFailure_AlsoLoadsFailSafeAndBlocksOverwrite()
+    {
+        var original = new ForemanSettings { CuDriver = "claude-code", McpPort = 49161 };
+        var originalJson = System.Text.Json.JsonSerializer.Serialize(original);
+        File.WriteAllText(_path, originalJson);
+        File.WriteAllText(_path + ".seal", "legacy-placeholder");
+        SettingsStore.Sealer = new LegacyThenUnavailableSealer();
+
+        var loaded = SettingsStore.Load(_path);
+        loaded.McpPort = 49998;
+        SettingsStore.Save(loaded, _path);
+
+        Assert.Equal(SettingsSealVerdict.Unverified, SettingsStore.LastSealVerdict);
+        Assert.Null(loaded.CuDriver);
+        Assert.Equal(originalJson, File.ReadAllText(_path));
+        Assert.Contains("legacy seal", SettingsStore.LastLoadFault, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(SettingsStore.LastSaveFault);
     }
 
     [Fact]
@@ -280,7 +356,7 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void SaveAudit_AttributesRoute_AndDistinguishesSecurityProjection()
+    public void SaveAudit_AttributesRoute_AndSealsEveryPersistedSetting()
     {
         var settings = new ForemanSettings { McpPort = 49152 };
         SettingsStore.Save(settings, _path);
@@ -288,7 +364,7 @@ public sealed class SettingsStoreTests : IDisposable
         SettingsStore.SaveAuditSink = audit => observed = audit;
 
         using (SettingsChangeContext.Begin(SettingsChangeAttribution.Declared(
-                   SettingsChangeOrigin.AuthenticatedMcp, "codex", "test-non-security-save")))
+                   SettingsChangeOrigin.AuthenticatedMcp, "codex", "test-settings-save")))
         {
             settings.McpPort = 49153;
             SettingsStore.Save(settings, _path);
@@ -296,7 +372,7 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.NotNull(observed);
         Assert.True(observed!.SettingsChanged);
-        Assert.False(observed.SecurityProjectionChanged);
+        Assert.True(observed.SecurityProjectionChanged);
         Assert.Equal(SettingsChangeOrigin.AuthenticatedMcp, observed.Attribution.Origin);
         Assert.Equal("codex", observed.Attribution.Actor);
 

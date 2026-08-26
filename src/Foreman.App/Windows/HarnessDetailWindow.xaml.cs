@@ -3,6 +3,7 @@ using Foreman.Core.Models;
 using Foreman.Core.Security;
 using Foreman.Core.Settings;
 using Foreman.McpServer;
+using Foreman.Monitor;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -384,6 +385,25 @@ public partial class HarnessDetailWindow : Window
         ShowActionResult(msg);
     }
 
+    private void KillHarnessClick(object sender, RoutedEventArgs e)
+    {
+        if (_ctx.KillHarness is null) { ShowActionResult("Harness termination isn't available."); return; }
+
+        var displayName = KnownHarnesses.GetById(_ctx.HarnessId)?.DisplayName ?? _ctx.HarnessId;
+        var answer = MessageBox.Show(
+            $"End every running process tree owned by '{displayName}'?\n\n" +
+            "TraceBrake will re-check each live process identity, then immediately terminate the complete tree. " +
+            "Unsaved agent work will be lost.",
+            "TraceBrake — Confirm End Harness",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+
+        var result = _ctx.KillHarness();
+        ShowActionResult(result.OperatorMessage);
+        Refresh();
+    }
+
     private void ResetMetricsClick(object sender, RoutedEventArgs e)
     {
         if (_ctx.ResetMetrics is null) { ShowActionResult("Reset isn't available."); return; }
@@ -428,6 +448,7 @@ public sealed class HarnessDetailContext
     // ── On-click operations (optional; null = button reports "not available") ──
     public Func<HarnessContextUsage?>? GetContextUsage { get; init; }
     public Func<(bool Ok, string Message)>? RequestCleanup { get; init; }
+    public Func<HarnessTerminationResult>? KillHarness { get; init; }
     public Action? ResetMetrics { get; init; }
 }
 

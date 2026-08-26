@@ -39,11 +39,13 @@ public partial class HarnessSettingsWindow : Window
     private readonly ForemanSettings _settings;
     private readonly List<CheckBox> _modalityChecks = [];
     private readonly Func<string?>? _getCuDriver;
-    private readonly Action<string?>? _setCuDriver;
+    private readonly Func<string?, Task<(bool Ok, string Reason)>>? _setCuDriver;
     private readonly Func<string?>? _getCuAttentionTab;
 
     public HarnessSettingsWindow(string harnessId, string displayName, ForemanSettings settings,
-        Func<string?>? getCuDriver = null, Action<string?>? setCuDriver = null, Func<string?>? getCuAttentionTab = null)
+        Func<string?>? getCuDriver = null,
+        Func<string?, Task<(bool Ok, string Reason)>>? setCuDriver = null,
+        Func<string?>? getCuAttentionTab = null)
     {
         _harnessId = harnessId;
         _settings = settings;
@@ -300,7 +302,14 @@ public partial class HarnessSettingsWindow : Window
         // is separate from the per-harness policy dicts below. Edits preserve the existing set unless the operator
         // explicitly chooses "only", "any", or "operator only"; changing it does not clear the shared attention tab.
         if (_setCuDriver is not null && DriverEditSelected())
-            _setCuDriver(EditedDriverSet(_getCuDriver?.Invoke()));
+        {
+            var driverResult = await _setCuDriver(EditedDriverSet(_getCuDriver?.Invoke()));
+            if (!driverResult.Ok)
+            {
+                StatusText.Text = "Driver unchanged: " + driverResult.Reason;
+                return;
+            }
+        }
 
         _settings.HarnessTrust[_harnessId] = newTrust;
         _settings.HarnessModalities[_harnessId] = newModalities;

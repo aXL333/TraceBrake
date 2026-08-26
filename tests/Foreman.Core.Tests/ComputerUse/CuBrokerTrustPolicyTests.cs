@@ -5,6 +5,8 @@ namespace Foreman.Core.Tests.ComputerUse;
 
 public sealed class CuBrokerTrustPolicyTests
 {
+    private const string Executor = "trust-policy-test-executor";
+
     private sealed class AllowAuditor : IAuditor
     {
         public Task<CuVerdict> JudgeAsync(CuAction action, CuContext context, CancellationToken ct = default) =>
@@ -21,6 +23,9 @@ public sealed class CuBrokerTrustPolicyTests
         return broker;
     }
 
+    private static IReadOnlyList<CuBrokerItem> Claim(CuBroker broker, CuModality modality = CuModality.Browser) =>
+        broker.Claim(1, modality, Executor);
+
     [Fact]
     public async Task Never_BlocksAtAdmissionBeforeAnAllowingAuditorCanGrant()
     {
@@ -29,7 +34,7 @@ public sealed class CuBrokerTrustPolicyTests
         var item = await broker.SubmitAsync(Browser(), new CuContext("codex"));
 
         Assert.Equal(CuActionState.Blocked, item.State);
-        Assert.Empty(broker.Claim(1));
+        Assert.Empty(Claim(broker));
     }
 
     [Fact]
@@ -41,7 +46,7 @@ public sealed class CuBrokerTrustPolicyTests
 
         Assert.Equal(CuActionState.Held, item.State);
         Assert.True(broker.ApproveHeld(item.ActionId).Ok);
-        Assert.Single(broker.Claim(1));
+        Assert.Single(Claim(broker));
     }
 
     [Fact]
@@ -55,7 +60,7 @@ public sealed class CuBrokerTrustPolicyTests
 
         locked = true;
 
-        Assert.Empty(broker.Claim(1));
+        Assert.Empty(Claim(broker));
         Assert.Equal(CuActionState.Held, broker.Get(item.ActionId)!.State);
     }
 
@@ -69,7 +74,7 @@ public sealed class CuBrokerTrustPolicyTests
 
         mode = TrustPrivilegeMode.Never;
 
-        Assert.Empty(broker.Claim(1));
+        Assert.Empty(Claim(broker));
         Assert.Equal(CuActionState.Rejected, broker.Get(item.ActionId)!.State);
     }
 
@@ -89,7 +94,7 @@ public sealed class CuBrokerTrustPolicyTests
         var item = await broker.SubmitAsync(action, new CuContext("codex"));
 
         Assert.Equal(CuActionState.Approved, item.State);
-        Assert.Single(broker.Claim(1, CuModality.Android));
+        Assert.Single(Claim(broker, CuModality.Android));
     }
 
     [Fact]

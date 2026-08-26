@@ -166,6 +166,9 @@
                                     ToolTip="Show the agent's self-reported remaining context / token budget (where available)." />
                             <Button Content="Request cleanup" Click="RequestCleanupClick" Margin="0,0,8,6"
                                     ToolTip="Politely ask this harness (over MCP) to checkpoint its work and stop leftover child processes. Nothing is killed." />
+                            <Button Content="End harness processes…" Click="KillHarnessClick" Margin="0,0,8,6"
+                                    Background="#FF3A1010" Foreground="#FFFF7777" BorderBrush="#FF5A2020"
+                                    ToolTip="Emergency stop: verify and terminate every process tree belonging to this harness. Unsaved work will be lost." />
                             <Button Content="Reset metrics" Click="ResetMetricsClick" Margin="0,0,8,6"
                                     ToolTip="Clear this harness's escalation / behavior counters for a fresh start." />
                             <Button Content="Copy summary" Click="CopySummaryClick" Margin="0,0,0,6"

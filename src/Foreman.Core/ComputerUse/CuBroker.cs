@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
+using System.Security.Cryptography;
 using Foreman.Core.Settings;
 
 namespace Foreman.Core.ComputerUse;
@@ -33,7 +35,24 @@ public sealed record CuBrokerItem(
     // Desktop one-window confinement: the active-window Epoch this item was bound at (null for browser), and the
     // panic epoch at submit. Claim re-checks both, so a window switch/rebind or a panic since approval invalidates it.
     long? BoundEpoch = null,
-    long PanicEpoch = 0);
+    long PanicEpoch = 0,
+    // A claim is a capability, not merely a state flip. Only the executor that received this unguessable lease may
+    // resolve secrets for, or complete, the action. The lease is cleared by panic/revocation/expiry.
+    string? ExecutionOwner = null,
+    string? ExecutionToken = null);
+
+/// <summary>Hard broker resource/lifetime limits. Non-terminal work is capped separately because terminal-only
+/// pruning cannot contain a compromised harness that deliberately fills Held/Auditing/Executing states.</summary>
+public sealed record CuBrokerOptions
+{
+    public int MaxItems { get; init; } = 200;
+    public int MaxNonTerminalItems { get; init; } = 100;
+    public int MaxNonTerminalPerHarness { get; init; } = 25;
+    public TimeSpan AuditingTtl { get; init; } = TimeSpan.FromMinutes(2);
+    public TimeSpan HeldTtl { get; init; } = TimeSpan.FromMinutes(15);
+    public TimeSpan ApprovedTtl { get; init; } = TimeSpan.FromMinutes(2);
+    public TimeSpan ExecutingTtl { get; init; } = TimeSpan.FromMinutes(10);
+}
 
 /// <summary>
 /// The mediated computer-use command broker — the Phase 0.5 replacement for LiveWeave's immediate command queue.
@@ -53,7 +72,9 @@ public sealed class CuBroker
     private readonly ConcurrentDictionary<string, CuBrokerItem> _items = new();
     private readonly IAuditor _auditor;
     private readonly Func<bool> _isHalted;
-    private const int MaxItems = 200;
+    private readonly CuBrokerOptions _options;
+    private readonly Func<DateTimeOffset> _utcNow;
+    private readonly object _maintenanceLock = new();
 
     // Operator-chosen driver SET: empty = operator only, ["*"] = any harness, else the specific harness ids that
     // may drive. Volatile reference; SetDrivers swaps the whole array atomically. (Was a single string; now a set
@@ -85,10 +106,21 @@ public sealed class CuBroker
     private const double RateBurst = 12;
     private const double RatePerSecond = 6;
 
-    public CuBroker(IAuditor auditor, Func<bool>? isHalted = null)
+    public CuBroker(IAuditor auditor, Func<bool>? isHalted = null,
+        CuBrokerOptions? options = null, Func<DateTimeOffset>? utcNow = null)
     {
         _auditor = auditor ?? throw new ArgumentNullException(nameof(auditor));
         _isHalted = isHalted ?? (() => false);
+        _options = options ?? new CuBrokerOptions();
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        if (_options.MaxItems < 1) throw new ArgumentOutOfRangeException(nameof(options), "MaxItems must be positive.");
+        if (_options.MaxNonTerminalItems is < 1 || _options.MaxNonTerminalItems > _options.MaxItems)
+            throw new ArgumentOutOfRangeException(nameof(options), "MaxNonTerminalItems must be within MaxItems.");
+        if (_options.MaxNonTerminalPerHarness is < 1 || _options.MaxNonTerminalPerHarness > _options.MaxNonTerminalItems)
+            throw new ArgumentOutOfRangeException(nameof(options), "MaxNonTerminalPerHarness must be within the global non-terminal cap.");
+        if (_options.AuditingTtl <= TimeSpan.Zero || _options.HeldTtl <= TimeSpan.Zero
+            || _options.ApprovedTtl <= TimeSpan.Zero || _options.ExecutingTtl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(options), "Computer-use TTLs must be positive.");
     }
 
     // ── Submit + audit ─────────────────────────────────────────────────────────
@@ -97,57 +129,43 @@ public sealed class CuBroker
     /// Returns the resulting item. While the panic halt is on, the action is Blocked without auditing.</summary>
     public async Task<CuBrokerItem> SubmitAsync(CuAction action, CuContext context, CancellationToken ct = default)
     {
-        var id = string.IsNullOrEmpty(action.ActionId) ? Guid.NewGuid().ToString("N")[..12] : action.ActionId!;
+        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var id = NewActionId();
+        if (!string.IsNullOrWhiteSpace(action.ActionId))
+        {
+            var requested = action.ActionId.Trim();
+            if (!IsValidActionId(requested))
+                return BlockAndRecord(id, action with { ActionId = id }, "invalid action id",
+                    "Action id must be 1-64 ASCII letters, digits, '_' or '-'.");
+            id = requested;
+        }
+
+        if (!TrySnapshotAction(action, id, out action, out var snapshotError))
+            return BlockAndRecord(id, action with { ActionId = id }, "invalid action envelope", snapshotError);
 
         if (_isHalted())
-        {
-            var halted = new CuBrokerItem(id, action, CuActionState.Blocked,
-                CuVerdict.Block("broker", "computer use is halted (panic)"), DateTimeOffset.UtcNow,
-                Error: "Computer use is halted.", UpdatedAt: DateTimeOffset.UtcNow);
-            _items[id] = halted;
-            return halted;
-        }
+            return BlockAndRecord(id, action, "computer use is halted (panic)", "Computer use is halted.");
 
         // Desktop verb allowlist (INV-12 structural): reject an unknown/over-length verb before the auditor or the
         // injector ever sees it, so a crafted verb from a relayed proposal cannot smuggle through.
         if (action.Modality == CuModality.Desktop && !CuVerbs.IsKnownDesktop(action.Verb))
-        {
-            var bad = new CuBrokerItem(id, action, CuActionState.Blocked,
-                CuVerdict.Block("broker", "unsupported desktop verb"), DateTimeOffset.UtcNow,
-                Error: "Unsupported desktop verb.", UpdatedAt: DateTimeOffset.UtcNow);
-            _items[id] = bad;
-            return bad;
-        }
+            return BlockAndRecord(id, action, "unsupported desktop verb", "Unsupported desktop verb.");
 
         if (action.Modality == CuModality.Browser && !CuVerbs.IsKnownBrowser(action.Verb))
-        {
-            var bad = new CuBrokerItem(id, action, CuActionState.Blocked,
-                CuVerdict.Block("broker", "unsupported browser verb"), DateTimeOffset.UtcNow,
-                Error: "Unsupported browser verb.", UpdatedAt: DateTimeOffset.UtcNow);
-            _items[id] = bad;
-            return bad;
-        }
+            return BlockAndRecord(id, action, "unsupported browser verb", "Unsupported browser verb.");
 
         if (action.Modality == CuModality.Android && !CuVerbs.IsKnownAndroid(action.Verb))
-        {
-            var bad = new CuBrokerItem(id, action, CuActionState.Blocked,
-                CuVerdict.Block("broker", "unsupported Android/ADB verb"), DateTimeOffset.UtcNow,
-                Error: "Unsupported Android verb.", UpdatedAt: DateTimeOffset.UtcNow);
-            _items[id] = bad;
-            return bad;
-        }
+            return BlockAndRecord(id, action, "unsupported Android/ADB verb", "Unsupported Android verb.");
 
         // Desktop/Android driver authorization. Desktop still requires an explicit id (never "*"); Android uses the
         // operator-approved shared driver set, so every selected harness can use the same unified cu_* surface.
         if (action.Modality is CuModality.Desktop or CuModality.Android
             && !CanDriveModality(action.ByHarness, isOperator: false, action.Modality))
-        {
-            var denied = new CuBrokerItem(id, action, CuActionState.Blocked,
-                CuVerdict.Block("broker", $"driver not authorized for {action.Modality.ToString().ToLowerInvariant()} computer use"),
-                DateTimeOffset.UtcNow, Error: "Driver not authorized for this modality.", UpdatedAt: DateTimeOffset.UtcNow);
-            _items[id] = denied;
-            return denied;
-        }
+            return BlockAndRecord(id, action,
+                $"driver not authorized for {action.Modality.ToString().ToLowerInvariant()} computer use",
+                "Driver not authorized for this modality.");
 
         if (action.Modality == CuModality.Android
             && !string.Equals(action.Verb, "devices", StringComparison.OrdinalIgnoreCase))
@@ -164,18 +182,13 @@ public sealed class CuBroker
                     {
                         ["serial"] = serial,
                     };
-                    action = action with { Args = stamped };
+                    action = action with { Args = stamped.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase) };
                 }
                 if (serial.Length == 0 || !_androidEnrollments.Contains(serial))
-                {
-                    var denied = new CuBrokerItem(id, action, CuActionState.Blocked,
-                        CuVerdict.Block("broker", serial.Length == 0
+                    return BlockAndRecord(id, action, serial.Length == 0
                             ? "Android action requires an explicitly enrolled device serial"
-                            : "target Android device is not enrolled"),
-                        DateTimeOffset.UtcNow, Error: "Target Android device is not enrolled.", UpdatedAt: DateTimeOffset.UtcNow);
-                    _items[id] = denied;
-                    return denied;
-                }
+                            : "target Android device is not enrolled",
+                        "Target Android device is not enrolled.");
             }
         }
 
@@ -186,13 +199,7 @@ public sealed class CuBroker
             try { trustDecision = capabilityGate(action); }
             catch { trustDecision = new TrustCapabilityDecision(true, false, "Universal Trust policy could not be evaluated."); }
             if (trustDecision.Blocked)
-            {
-                var denied = new CuBrokerItem(id, action, CuActionState.Blocked,
-                    CuVerdict.Block("broker", trustDecision.Reason), DateTimeOffset.UtcNow,
-                    Error: trustDecision.Reason, UpdatedAt: DateTimeOffset.UtcNow);
-                _items[id] = denied;
-                return denied;
-            }
+                return BlockAndRecord(id, action, trustDecision.Reason, trustDecision.Reason);
         }
 
         // Rate limit (Slice 2): a non-operator harness flooding actions faster than a human could pilot is Held
@@ -200,13 +207,14 @@ public sealed class CuBroker
         if (!string.Equals(action.ByHarness, OperatorMarker, StringComparison.OrdinalIgnoreCase)
             && !RateLimitOk(action.ByHarness ?? "?"))
         {
+            var now = _utcNow();
             var throttled = new CuBrokerItem(id, action, CuActionState.Held,
                 CuVerdict.Hold("broker", "action rate exceeds plausible pilot speed — held for operator"),
-                DateTimeOffset.UtcNow, UpdatedAt: DateTimeOffset.UtcNow,
+                now, UpdatedAt: now,
                 BoundEpoch: action.Modality == CuModality.Desktop ? _activeWindow?.Epoch : null,
                 PanicEpoch: Interlocked.Read(ref _panicEpoch));
-            _items[id] = throttled;
-            return throttled;
+            TryAdmitNonTerminal(throttled, out var admitted);
+            return admitted;
         }
 
         // APK approval is bound to the exact local file TraceBrake observed, not merely an agent-supplied path. This
@@ -217,24 +225,21 @@ public sealed class CuBroker
         {
             var prepared = await AdbBridgeExecutor.PrepareInstallActionAsync(action, ct).ConfigureAwait(false);
             if (prepared.Action is null)
-            {
-                var denied = new CuBrokerItem(id, action, CuActionState.Blocked,
-                    CuVerdict.Block("broker", prepared.Error ?? "APK preparation failed"),
-                    DateTimeOffset.UtcNow, Error: prepared.Error ?? "APK preparation failed.",
-                    UpdatedAt: DateTimeOffset.UtcNow);
-                _items[id] = denied;
-                return denied;
-            }
-            action = prepared.Action;
+                return BlockAndRecord(id, action, prepared.Error ?? "APK preparation failed",
+                    prepared.Error ?? "APK preparation failed.");
+            if (!TrySnapshotAction(prepared.Action, id, out action, out snapshotError))
+                return BlockAndRecord(id, action, "invalid prepared Android action", snapshotError);
         }
 
         // Capture the panic epoch at ADMISSION and stamp it on BOTH the Auditing placeholder and the final item. If a
         // panic bumps the epoch DURING the audit, the final item is stale (PanicEpoch < current) so Claim drops it - and
         // the CAS write-back below refuses to resurrect a placeholder OnPanicHalt already Rejected.
         var submitEpoch = Interlocked.Read(ref _panicEpoch);
-        var auditing = new CuBrokerItem(id, action, CuActionState.Auditing, null, DateTimeOffset.UtcNow,
-            PanicEpoch: submitEpoch);
-        _items[id] = auditing;
+        var admittedAt = _utcNow();
+        var auditing = new CuBrokerItem(id, action, CuActionState.Auditing, null, admittedAt,
+            UpdatedAt: admittedAt, PanicEpoch: submitEpoch);
+        if (!TryAdmitNonTerminal(auditing, out var admission)) return admission;
+        auditing = admission;
 
         CuVerdict verdict;
         try { verdict = await _auditor.JudgeAsync(action, context, ct).ConfigureAwait(false); }
@@ -297,24 +302,27 @@ public sealed class CuBroker
             verdict = CuVerdict.Hold("broker", "Android state-changing action held for operator approval");
         }
 
-        var item = new CuBrokerItem(id, action, state, verdict, DateTimeOffset.UtcNow, UpdatedAt: DateTimeOffset.UtcNow,
+        var item = new CuBrokerItem(id, action, state, verdict, auditing.CreatedAt, UpdatedAt: _utcNow(),
             BoundEpoch: action.Modality == CuModality.Desktop ? _activeWindow?.Epoch : null,
             PanicEpoch: submitEpoch);
 
         // Panic-during-audit guard (TOCTOU, INV-20): if a panic happened while we were auditing, OnPanicHalt has already
         // Rejected the placeholder and/or bumped the epoch. CAS the audited result in ONLY if the placeholder is still
         // ours; if a panic won the race, respect the terminal Rejected state - NEVER resurrect it.
-        if (_isHalted() || submitEpoch != Interlocked.Read(ref _panicEpoch))
+        lock (_maintenanceLock)
         {
-            var blocked = new CuBrokerItem(id, action, CuActionState.Blocked,
-                CuVerdict.Block("broker", "computer use was halted (panic) during audit"), DateTimeOffset.UtcNow,
-                Error: "Halted during audit.", UpdatedAt: DateTimeOffset.UtcNow, PanicEpoch: submitEpoch);
-            _items.TryUpdate(id, blocked, auditing);   // only overwrite if still Auditing; else leave OnPanicHalt's record
-            return _items.TryGetValue(id, out var cur) ? cur : blocked;
+            if (_isHalted() || submitEpoch != Interlocked.Read(ref _panicEpoch))
+            {
+                var blocked = new CuBrokerItem(id, action, CuActionState.Blocked,
+                    CuVerdict.Block("broker", "computer use was halted (panic) during audit"), auditing.CreatedAt,
+                    Error: "Halted during audit.", UpdatedAt: _utcNow(), PanicEpoch: submitEpoch);
+                _items.TryUpdate(id, blocked, auditing);   // only overwrite if still Auditing; else leave OnPanicHalt's record
+                return _items.TryGetValue(id, out var cur) ? cur : blocked;
+            }
+            if (!_items.TryUpdate(id, item, auditing))
+                return _items.TryGetValue(id, out var cur) ? cur : item;   // a concurrent writer won; respect it
         }
-        if (!_items.TryUpdate(id, item, auditing))
-            return _items.TryGetValue(id, out var cur) ? cur : item;   // a concurrent writer (panic) won; respect it
-        Prune();
+        Maintain();
         return item;
     }
 
@@ -322,62 +330,85 @@ public sealed class CuBroker
 
     public (bool Ok, string Reason) ApproveHeld(string actionId)
     {
-        if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.");
-        if (item.State != CuActionState.Held) return (false, $"Action is {item.State}, not Held.");
-        // OperatorApproved=true so the delivery-time focus re-gate (Claim) won't re-hold this excursion.
-        _items[actionId] = item with { State = CuActionState.Approved, OperatorApproved = true, UpdatedAt = DateTimeOffset.UtcNow };
-        return (true, "Approved.");
+        Maintain();
+        lock (_maintenanceLock)
+        {
+            if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.");
+            if (item.State != CuActionState.Held) return (false, $"Action is {item.State}, not Held.");
+            if (_isHalted()) return (false, "Computer use is halted (panic).");
+            // OperatorApproved=true so the delivery-time focus re-gate (Claim) won't re-hold this excursion.
+            var approved = item with { State = CuActionState.Approved, OperatorApproved = true, UpdatedAt = _utcNow() };
+            return _items.TryUpdate(actionId, approved, item)
+                ? (true, "Approved.")
+                : (false, "Action changed concurrently; approval was not applied.");
+        }
     }
 
     public (bool Ok, string Reason) RejectHeld(string actionId, string? reason = null)
     {
-        if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.");
-        if (item.State != CuActionState.Held) return (false, $"Action is {item.State}, not Held.");
-        _items[actionId] = item with
+        Maintain();
+        lock (_maintenanceLock)
         {
-            State = CuActionState.Rejected,
-            Error = string.IsNullOrWhiteSpace(reason) ? "Rejected by operator." : reason!.Trim(),
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        return (true, "Rejected.");
+            if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.");
+            if (item.State != CuActionState.Held) return (false, $"Action is {item.State}, not Held.");
+            var rejected = item with
+            {
+                State = CuActionState.Rejected,
+                Error = string.IsNullOrWhiteSpace(reason) ? "Rejected by operator." : reason!.Trim(),
+                UpdatedAt = _utcNow(),
+                ExecutionOwner = null,
+                ExecutionToken = null,
+            };
+            return _items.TryUpdate(actionId, rejected, item)
+                ? (true, "Rejected.")
+                : (false, "Action changed concurrently; rejection was not applied.");
+        }
     }
 
     // ── Executor: claim Approved actions, then complete them ─────────────────────
 
-    /// <summary>The executor claims up to <paramref name="limit"/> APPROVED actions, moving them to Executing.
-    /// Returns nothing while halted; re-checks the driver at delivery (rejects actions no longer authorized).
-    /// <paramref name="only"/> restricts delivery to one modality - the MCP poll path passes Browser so a Desktop item
-    /// can NEVER be claimed over the network (INV-7: desktop is in-process only); an in-process executor passes null.</summary>
-    public IReadOnlyList<CuBrokerItem> Claim(int limit, CuModality? only = null)
+    /// <summary>The executor claims up to <paramref name="limit"/> APPROVED actions of exactly one modality, moving
+    /// them to Executing and minting an owner-bound, unguessable execution lease. Returns nothing while halted and
+    /// re-checks driver authority at delivery. Requiring a modality prevents an executor from accidentally draining a
+    /// different surface; requiring an owner prevents a sibling executor from completing or resolving its actions.</summary>
+    public IReadOnlyList<CuBrokerItem> Claim(int limit, CuModality modality, string executionOwner)
     {
+        Maintain();
         if (_isHalted()) return [];
+        var owner = NormalizeExecutionOwner(executionOwner);
+        if (owner is null) return [];
         var n = Math.Clamp(limit, 1, 10);
         var batch = new List<CuBrokerItem>(n);
         foreach (var item in _items.Values
-                     .Where(i => i.State == CuActionState.Approved && (only is null || i.Action.Modality == only))
+                     .Where(i => i.State == CuActionState.Approved && i.Action.Modality == modality)
                      .OrderBy(i => i.CreatedAt))
         {
             if (batch.Count >= n) break;
+            if (_isHalted()) break; // a halt between items must not turn the remainder of a batch into Executing
             if (!CanDriveModality(item.Action.ByHarness, isOperator: false, item.Action.Modality))   // INV-14 at delivery
             {
-                _items[item.ActionId] = item with
+                _items.TryUpdate(item.ActionId, item with
                 {
                     State = CuActionState.Rejected,
                     Error = "Driver no longer authorized for this action.",
-                    UpdatedAt = DateTimeOffset.UtcNow,
-                };
+                    UpdatedAt = _utcNow(),
+                    ExecutionOwner = null,
+                    ExecutionToken = null,
+                }, item);
                 continue;
             }
 
             // Stale across a panic: an item approved before the latest halt is invalidated, never delivered.
             if (item.PanicEpoch < Interlocked.Read(ref _panicEpoch))
             {
-                _items[item.ActionId] = item with
+                _items.TryUpdate(item.ActionId, item with
                 {
                     State = CuActionState.Rejected,
                     Error = "Computer use was halted (panic) after this was approved — re-submit.",
-                    UpdatedAt = DateTimeOffset.UtcNow,
-                };
+                    UpdatedAt = _utcNow(),
+                    ExecutionOwner = null,
+                    ExecutionToken = null,
+                }, item);
                 continue;
             }
 
@@ -391,22 +422,24 @@ public sealed class CuBroker
                 catch { decision = new TrustCapabilityDecision(true, false, "Universal Trust policy could not be re-evaluated."); }
                 if (decision.Blocked)
                 {
-                    _items[item.ActionId] = item with
+                    _items.TryUpdate(item.ActionId, item with
                     {
                         State = CuActionState.Rejected,
                         Error = decision.Reason,
-                        UpdatedAt = DateTimeOffset.UtcNow,
-                    };
+                        UpdatedAt = _utcNow(),
+                        ExecutionOwner = null,
+                        ExecutionToken = null,
+                    }, item);
                     continue;
                 }
                 if (decision.RequiresApproval && !item.OperatorApproved)
                 {
-                    _items[item.ActionId] = item with
+                    _items.TryUpdate(item.ActionId, item with
                     {
                         State = CuActionState.Held,
                         Verdict = CuVerdict.Hold("trust-policy", decision.Reason),
-                        UpdatedAt = DateTimeOffset.UtcNow,
-                    };
+                        UpdatedAt = _utcNow(),
+                    }, item);
                     continue;
                 }
             }
@@ -418,22 +451,23 @@ public sealed class CuBroker
                 // operator-approved item re-validates the bound window, so a switch/rebind/recycle since approval is caught.
                 if (EvaluateWindowExcursion(item.Action, "at delivery") is { } wv && wv.Decision != CuDecision.Allow)
                 {
-                    _items[item.ActionId] = item with { State = CuActionState.Held, Verdict = wv, UpdatedAt = DateTimeOffset.UtcNow };
+                    _items.TryUpdate(item.ActionId,
+                        item with { State = CuActionState.Held, Verdict = wv, UpdatedAt = _utcNow() }, item);
                     continue;
                 }
                 var aw = _activeWindow;
                 if (item.BoundEpoch is long be && aw is not null && be != aw.Epoch)   // window switched/rebound since approval
                 {
-                    _items[item.ActionId] = item with { State = CuActionState.Held,
+                    _items.TryUpdate(item.ActionId, item with { State = CuActionState.Held,
                         Verdict = CuVerdict.Hold("broker", "Bound window switched since approval — re-bind + re-submit."),
-                        UpdatedAt = DateTimeOffset.UtcNow };
+                        UpdatedAt = _utcNow() }, item);
                     continue;
                 }
                 if (aw is not null && WindowProbe is { } probe && !probe.IsAlive(aw))   // recycled-handle / window gone
                 {
-                    _items[item.ActionId] = item with { State = CuActionState.Held,
+                    _items.TryUpdate(item.ActionId, item with { State = CuActionState.Held,
                         Verdict = CuVerdict.Hold("broker", "Bound window is no longer alive — re-bind + re-submit."),
-                        UpdatedAt = DateTimeOffset.UtcNow };
+                        UpdatedAt = _utcNow() }, item);
                     continue;
                 }
                 // On-window with no explicit hwnd: STAMP the bound hwnd + epoch so the executor can't pick another window.
@@ -445,7 +479,8 @@ public sealed class CuBroker
                         ["hwnd"] = aw.Hwnd.ToInt64().ToString(),
                         ["epoch"] = aw.Epoch.ToString(),
                     };
-                    deliver = item with { Action = item.Action with { Args = stamped } };
+                    deliver = item with { Action = item.Action with
+                        { Args = stamped.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase) } };
                 }
             }
             else if (item.Action.Modality == CuModality.Browser)
@@ -455,7 +490,8 @@ public sealed class CuBroker
                 if (!item.OperatorApproved && EvaluateExcursion(item.Action, "at delivery") is { } exV
                     && exV.Decision != CuDecision.Allow)
                 {
-                    _items[item.ActionId] = item with { State = CuActionState.Held, Verdict = exV, UpdatedAt = DateTimeOffset.UtcNow };
+                    _items.TryUpdate(item.ActionId,
+                        item with { State = CuActionState.Held, Verdict = exV, UpdatedAt = _utcNow() }, item);
                     continue;
                 }
                 if (_attentionTab is { Length: > 0 } pin
@@ -464,12 +500,46 @@ public sealed class CuBroker
                     && string.IsNullOrEmpty(item.Action.Arg("tabId")))
                 {
                     var stamped = new Dictionary<string, string>(item.Action.Args, StringComparer.Ordinal) { ["tabId"] = pin };
-                    deliver = item with { Action = item.Action with { Args = stamped } };
+                    deliver = item with { Action = item.Action with
+                        { Args = stamped.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase) } };
                 }
             }
 
-            var executing = deliver with { State = CuActionState.Executing, UpdatedAt = DateTimeOffset.UtcNow };
-            if (_items.TryUpdate(item.ActionId, executing, item))   // CAS against the original Approved item
+            CuBrokerItem? executing = null;
+            lock (_maintenanceLock)
+            {
+                // Serialize the authority check + final Approved -> Executing CAS with panic and modality
+                // revocation. Without this lock, panic could snapshot Approved, lose its CAS to this claim, and
+                // leave a freshly Executing action alive after the halt epoch had already advanced.
+                if (_isHalted() || item.PanicEpoch < Interlocked.Read(ref _panicEpoch))
+                    continue;
+                // SetDrivers shares this lock. Re-check here, immediately before the transition, so a driver
+                // hand-off cannot race the earlier delivery check and mint a fresh execution lease for the old
+                // driver after its authority has been removed.
+                if (!CanDriveModality(item.Action.ByHarness, isOperator: false, item.Action.Modality))
+                {
+                    _items.TryUpdate(item.ActionId, item with
+                    {
+                        State = CuActionState.Rejected,
+                        Error = "Driver no longer authorized for this action.",
+                        UpdatedAt = _utcNow(),
+                        ExecutionOwner = null,
+                        ExecutionToken = null,
+                    }, item);
+                    continue;
+                }
+
+                var candidate = deliver with
+                {
+                    State = CuActionState.Executing,
+                    UpdatedAt = _utcNow(),
+                    ExecutionOwner = owner,
+                    ExecutionToken = NewExecutionToken(),
+                };
+                if (_items.TryUpdate(item.ActionId, candidate, item))   // CAS against the original Approved item
+                    executing = candidate;
+            }
+            if (executing is not null)
             {
                 batch.Add(executing);
                 try { OnExecuting?.Invoke(executing); } catch { /* HUD is best-effort; never break delivery */ }
@@ -478,23 +548,41 @@ public sealed class CuBroker
         return batch;
     }
 
-    public (bool Ok, string Reason) Complete(string actionId, bool ok, object? result, string? error)
+    /// <summary>Validate that an action is still live and the exact executor lease owns it. Vault resolution calls
+    /// this both before and after its presence prompt; pumps call it immediately before every physical effect.</summary>
+    public (bool Ok, string Reason, CuBrokerItem? Item) ValidateExecution(
+        string actionId, CuModality modality, string executionOwner, string executionToken)
     {
-        if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.");
-        if (item.State is CuActionState.Completed or CuActionState.Failed) return (false, "Already completed.");
-        // A panic that Rejected (or a Block that terminated) an in-flight item WINS the race: the pump's post-kill
-        // Complete must not overwrite that terminal state, so the audit/blackbox record of what the panic stopped stays
-        // truthful (mirrors the SubmitAsync panic-during-audit CAS guard).
-        if (item.State is CuActionState.Rejected or CuActionState.Blocked)
-            return (false, "Already terminal (panic/rejected) — not overwriting.");
-        _items[actionId] = item with
+        Maintain();
+        if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.", null);
+        var reason = ExecutionMismatch(item, modality, executionOwner, executionToken);
+        return reason is null ? (true, "Execution lease is valid.", item) : (false, reason, null);
+    }
+
+    /// <summary>Only an Executing action may complete, and only with the exact owner/modality/token minted by Claim.
+    /// The final transition is CAS so panic, expiry, revocation, and duplicate completions always win safely.</summary>
+    public (bool Ok, string Reason) Complete(string actionId, bool ok, object? result, string? error,
+        CuModality modality, string executionOwner, string executionToken)
+    {
+        Maintain();
+        lock (_maintenanceLock)
         {
-            State = ok ? CuActionState.Completed : CuActionState.Failed,
-            Result = result,
-            Error = string.IsNullOrWhiteSpace(error) ? null : error!.Trim(),
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        return (true, ok ? "Completed." : "Failed.");
+            if (!_items.TryGetValue(actionId, out var item)) return (false, "Unknown action id.");
+            if (ExecutionMismatch(item, modality, executionOwner, executionToken) is { } mismatch)
+                return (false, mismatch);
+            var completed = item with
+            {
+                State = ok ? CuActionState.Completed : CuActionState.Failed,
+                Result = result,
+                Error = string.IsNullOrWhiteSpace(error) ? null : error!.Trim(),
+                UpdatedAt = _utcNow(),
+                ExecutionOwner = null,
+                ExecutionToken = null,
+            };
+            return _items.TryUpdate(actionId, completed, item)
+                ? (true, ok ? "Completed." : "Failed.")
+                : (false, "Action changed concurrently; completion was not applied.");
+        }
     }
 
     /// <summary>
@@ -503,41 +591,61 @@ public sealed class CuBroker
     /// </summary>
     public int RevokeModality(CuModality modality, string reason)
     {
-        var revoked = 0;
-        foreach (var pair in _items)
+        lock (_maintenanceLock)
         {
-            var item = pair.Value;
-            if (item.Action.Modality != modality || item.State is
-                CuActionState.Completed or CuActionState.Failed or CuActionState.Rejected or CuActionState.Blocked)
-                continue;
-
-            var rejected = item with
+            var revoked = 0;
+            foreach (var pair in _items)
             {
-                State = CuActionState.Rejected,
-                Error = string.IsNullOrWhiteSpace(reason) ? "Modality authority was revoked." : reason.Trim(),
-                UpdatedAt = DateTimeOffset.UtcNow,
-            };
-            if (_items.TryUpdate(pair.Key, rejected, item)) revoked++;
+                var item = pair.Value;
+                if (item.Action.Modality != modality || item.State is
+                    CuActionState.Completed or CuActionState.Failed or CuActionState.Rejected or CuActionState.Blocked)
+                    continue;
+
+                var rejected = item with
+                {
+                    State = CuActionState.Rejected,
+                    Error = string.IsNullOrWhiteSpace(reason) ? "Modality authority was revoked." : reason.Trim(),
+                    UpdatedAt = _utcNow(),
+                    ExecutionOwner = null,
+                    ExecutionToken = null,
+                };
+                if (_items.TryUpdate(pair.Key, rejected, item)) revoked++;
+            }
+            return revoked;
         }
-        return revoked;
     }
 
     // ── Queries ──────────────────────────────────────────────────────────────────
 
-    public CuBrokerItem? Get(string actionId) => _items.TryGetValue(actionId, out var i) ? i : null;
+    public CuBrokerItem? Get(string actionId)
+    {
+        Maintain();
+        return _items.TryGetValue(actionId, out var i) ? i : null;
+    }
+
+    /// <summary>Current bounded retained record count, primarily for health/limit regression checks.</summary>
+    public int ItemCount { get { Maintain(); return _items.Count; } }
 
     /// <summary>Cheap peek: is there at least one APPROVED action of this modality waiting? Lets the pump gate the HUD
     /// occlusion check + claim only when there is work, so Approved items simply WAIT (not fail) while the HUD is occluded.</summary>
-    public bool HasApprovedFor(CuModality modality) =>
-        !_isHalted() && _items.Values.Any(i => i.State == CuActionState.Approved && i.Action.Modality == modality);
+    public bool HasApprovedFor(CuModality modality)
+    {
+        Maintain();
+        return !_isHalted() && _items.Values.Any(i => i.State == CuActionState.Approved && i.Action.Modality == modality);
+    }
 
-    public IReadOnlyList<CuBrokerItem> ListHeld() =>
-        _items.Values.Where(i => i.State == CuActionState.Held).OrderBy(i => i.CreatedAt).ToList();
+    public IReadOnlyList<CuBrokerItem> ListHeld()
+    {
+        Maintain();
+        return _items.Values.Where(i => i.State == CuActionState.Held).OrderBy(i => i.CreatedAt).ToList();
+    }
 
     // ── Driver gating (ported from LiveWeaveBroker) ──────────────────────────────
 
     /// <summary>The authorized driver set, normalized: empty = operator-only, ["*"] = any harness, else harness ids.</summary>
-    public IReadOnlyList<string> Drivers => _drivers;
+    // Never expose the live authority array: IReadOnlyList is only a compile-time view and a caller could cast a
+    // returned string[] back to IList<string> and mutate the broker's driver set without SetDrivers/revocation.
+    public IReadOnlyList<string> Drivers => _drivers.ToArray();
 
     /// <summary>Back-compat single-string view: null = operator-only, "*" = any, else the ids joined by commas.</summary>
     public string? Driver => _drivers.Length == 0 ? null : string.Join(",", _drivers);
@@ -549,14 +657,14 @@ public sealed class CuBroker
 
     /// <summary>Back-compat single setter: accepts one id, "any", blank (operator-only), OR a comma-separated list
     /// (so a persisted "a,b" round-trips). Delegates to <see cref="SetDrivers"/>.</summary>
-    public void SetDriver(string? harnessId) =>
+    public (bool Ok, string Reason) SetDriver(string? harnessId) =>
         SetDrivers(string.IsNullOrWhiteSpace(harnessId)
             ? null
             : harnessId.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
     /// <summary>Sets the full authorized driver set. Each id is normalized (trim/lower-case, "any" -> "*"); if "*"
     /// is present it supersedes the specifics and collapses to ["*"] (any harness). Empty -> operator-only.</summary>
-    public void SetDrivers(IEnumerable<string>? harnessIds)
+    public (bool Ok, string Reason) SetDrivers(IEnumerable<string>? harnessIds)
     {
         var set = (harnessIds ?? [])
             .Select(h => (h ?? string.Empty).Trim().ToLowerInvariant())
@@ -564,8 +672,50 @@ public sealed class CuBroker
             .Select(h => string.Equals(h, "any", StringComparison.OrdinalIgnoreCase) ? "*" : h)
             .Distinct()
             .ToArray();
-        _drivers = set.Contains("*") ? ["*"] : set;
-        DriverPersister?.Invoke(Driver);
+        lock (_maintenanceLock)
+        {
+            var next = set.Contains("*") ? ["*"] : set;
+            if (_drivers.SequenceEqual(next, StringComparer.Ordinal))
+                return (true, "Driver authority was unchanged.");
+
+            // Persistence/sealing is part of the authority transaction. Granting live driver power first and then
+            // discovering that a Guardian-backed save was refused creates an undocumented session-only bypass.
+            // Serialize this with claim/revocation and apply the live set only after persistence succeeds.
+            var persisted = next.Length == 0 ? null : string.Join(",", next);
+            if (DriverPersister is { } persist)
+            {
+                try { persist(persisted); }
+                catch (Exception ex)
+                {
+                    return (false, $"Driver authority was not changed because persistence failed ({ex.GetType().Name}).");
+                }
+            }
+
+            _drivers = next;
+
+            // Driver selection is live authority, not merely an admission preference. Revoke queued AND already
+            // executing browser/Android work whose submitting harness is no longer selected. Actions belonging to
+            // retained drivers survive, which preserves intentional multi-harness and seamless hand-off workflows.
+            foreach (var pair in _items)
+            {
+                var item = pair.Value;
+                if (item.State is CuActionState.Completed or CuActionState.Failed
+                    or CuActionState.Rejected or CuActionState.Blocked)
+                    continue;
+                if (CanDriveModality(item.Action.ByHarness, isOperator: false, item.Action.Modality))
+                    continue;
+
+                _items.TryUpdate(pair.Key, item with
+                {
+                    State = CuActionState.Rejected,
+                    Error = "Driver authority was removed before the action completed.",
+                    UpdatedAt = _utcNow(),
+                    ExecutionOwner = null,
+                    ExecutionToken = null,
+                }, item);
+            }
+        }
+        return (true, "Driver authority updated.");
     }
 
     // Derived DESKTOP driver enrollments, kept SEPARATE from the persisted browser driver set (_drivers). Desktop
@@ -774,22 +924,27 @@ public sealed class CuBroker
         return (true, w is null ? "Cleared the bound CU window." : $"Bound CU window '{w.TitleAtBind}' (pid {w.OwnerPid}).");
     }
 
-    /// <summary>Called on a panic HALT: invalidate local-input queues. Every non-terminal Desktop or Android item is
-    /// Rejected and the panic epoch is bumped, so any in-flight/after Claim refuses items approved before the halt.</summary>
+    /// <summary>Called on a panic HALT: invalidate every modality, including already-claimed Browser work. The
+    /// execution lease is erased, so a stale extension/pump cannot resolve a vault reference or report success after
+    /// the stop. Executors must still re-check the action immediately before each physical effect.</summary>
     public void OnPanicHalt()
     {
-        Interlocked.Increment(ref _panicEpoch);
-        foreach (var item in _items.Values)
+        lock (_maintenanceLock)
         {
-            if (item.Action.Modality is not (CuModality.Desktop or CuModality.Android)) continue;
-            if (item.State is CuActionState.Auditing or CuActionState.Held or CuActionState.Approved or CuActionState.Executing)
-                _items[item.ActionId] = item with
-                {
-                    State = CuActionState.Rejected,
-                    Error = "Computer use was halted (panic) — re-submit.",
-                    OperatorApproved = false,
-                    UpdatedAt = DateTimeOffset.UtcNow,
-                };
+            Interlocked.Increment(ref _panicEpoch);
+            foreach (var item in _items.Values)
+            {
+                if (item.State is CuActionState.Auditing or CuActionState.Held or CuActionState.Approved or CuActionState.Executing)
+                    _items.TryUpdate(item.ActionId, item with
+                    {
+                        State = CuActionState.Rejected,
+                        Error = "Computer use was halted (panic) — re-submit.",
+                        OperatorApproved = false,
+                        UpdatedAt = _utcNow(),
+                        ExecutionOwner = null,
+                        ExecutionToken = null,
+                    }, item);
+            }
         }
     }
 
@@ -819,7 +974,12 @@ public sealed class CuBroker
     {
         lock (_rateLock)
         {
-            var now = DateTimeOffset.UtcNow.Ticks;
+            var now = _utcNow().Ticks;
+            if (!_rate.ContainsKey(harness) && _rate.Count >= 256)
+            {
+                foreach (var stale in _rate.OrderBy(kv => kv.Value.Ticks).Take(_rate.Count - 255).Select(kv => kv.Key).ToArray())
+                    _rate.Remove(stale);
+            }
             if (!_rate.TryGetValue(harness, out var cur)) { _rate[harness] = (RateBurst - 1, now); return true; }
             var elapsedSec = (now - cur.Ticks) / (double)TimeSpan.TicksPerSecond;
             var tokens = Math.Min(RateBurst, cur.Tokens + elapsedSec * RatePerSecond);
@@ -829,16 +989,234 @@ public sealed class CuBroker
         }
     }
 
-    private void Prune()
+    private static string NewActionId() => Guid.NewGuid().ToString("N")[..12];
+
+    private static string NewExecutionToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+
+    private static bool IsValidActionId(string id) =>
+        id.Length is >= 1 and <= 64 && id.All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z'
+            or >= '0' and <= '9' or '_' or '-');
+
+    private static CuAction BoundedRejectionAction(CuAction action, string id) => new(
+        Enum.IsDefined(action.Modality) ? action.Modality : CuModality.Browser,
+        (action.Verb ?? string.Empty).Length <= 40 ? action.Verb ?? string.Empty : (action.Verb ?? string.Empty)[..40],
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase).ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
+        ByHarness: string.IsNullOrWhiteSpace(action.ByHarness) ? null : action.ByHarness.Trim()[..Math.Min(action.ByHarness.Trim().Length, 128)],
+        ActionId: id,
+        SessionId: string.IsNullOrWhiteSpace(action.SessionId) ? null : action.SessionId.Trim()[..Math.Min(action.SessionId.Trim().Length, 128)],
+        Isolation: Enum.IsDefined(action.Isolation) ? action.Isolation : CuIsolationMode.SharedMonopilot,
+        RequiresOperatorApproval: action.RequiresOperatorApproval);
+
+    private static bool TrySnapshotAction(CuAction source, string id, out CuAction snapshot, out string reason)
     {
-        if (_items.Count <= MaxItems) return;
-        var terminal = _items.Values
-            .Where(i => i.State is CuActionState.Completed or CuActionState.Failed
-                or CuActionState.Rejected or CuActionState.Blocked)
-            .OrderBy(i => i.UpdatedAt ?? i.CreatedAt)
-            .Take(_items.Count - MaxItems)
-            .Select(i => i.ActionId)
-            .ToList();
-        foreach (var id in terminal) _items.TryRemove(id, out _);
+        snapshot = BoundedRejectionAction(source, id);
+        reason = string.Empty;
+        if (!Enum.IsDefined(source.Modality)) { reason = "Unknown computer-use modality."; return false; }
+        if (!Enum.IsDefined(source.Isolation)) { reason = "Unknown computer-use isolation mode."; return false; }
+        if (source.Args is null) { reason = "Action arguments are required."; return false; }
+        if (source.Args.Count > 32) { reason = "Action may contain at most 32 arguments."; return false; }
+        if ((source.ByHarness?.Length ?? 0) > 128 || (source.SessionId?.Length ?? 0) > 128)
+        { reason = "Harness/session identity is too long."; return false; }
+
+        var args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var totalChars = 0;
+        foreach (var pair in source.Args)
+        {
+            var key = pair.Key?.Trim() ?? string.Empty;
+            var value = pair.Value ?? string.Empty;
+            if (key.Length is < 1 or > 64) { reason = "Action argument names must be 1-64 characters."; return false; }
+            if (value.Length > 16 * 1024) { reason = $"Action argument '{key}' exceeds the 16 KiB cap."; return false; }
+            totalChars += key.Length + value.Length;
+            if (totalChars > 64 * 1024) { reason = "Action arguments exceed the 64 KiB aggregate cap."; return false; }
+            if (!args.TryAdd(key, value)) { reason = $"Duplicate action argument '{key}'."; return false; }
+        }
+
+        snapshot = source with
+        {
+            Verb = (source.Verb ?? string.Empty).Trim(),
+            Args = args.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
+            ByHarness = string.IsNullOrWhiteSpace(source.ByHarness) ? null : source.ByHarness.Trim(),
+            ActionId = id,
+            SessionId = string.IsNullOrWhiteSpace(source.SessionId) ? null : source.SessionId.Trim(),
+        };
+        return true;
+    }
+
+    private CuBrokerItem BlockAndRecord(string id, CuAction action, string verdictReason, string error)
+    {
+        if (!TrySnapshotAction(action, id, out var safe, out _)) safe = BoundedRejectionAction(action, id);
+        var now = _utcNow();
+        return StoreTerminal(new CuBrokerItem(id, safe, CuActionState.Blocked,
+            CuVerdict.Block("broker", verdictReason), now, Error: error, UpdatedAt: now));
+    }
+
+    private static bool IsNonTerminal(CuActionState state) => state is
+        CuActionState.Auditing or CuActionState.Held or CuActionState.Approved or CuActionState.Executing;
+
+    private static string HarnessBucket(CuAction action) =>
+        string.IsNullOrWhiteSpace(action.ByHarness) ? "operator" : action.ByHarness.Trim().ToLowerInvariant();
+
+    private bool TryAdmitNonTerminal(CuBrokerItem requested, out CuBrokerItem admitted)
+    {
+        lock (_maintenanceLock)
+        {
+            ExpireStaleUnsafe();
+            PruneTerminalUnsafe(_options.MaxItems - 1);
+            if (_isHalted())
+            {
+                admitted = StoreTerminalUnsafe(CapacityBlock(requested,
+                    "Computer use is halted (panic); non-terminal work was not admitted."));
+                return false;
+            }
+            if (_items.ContainsKey(requested.ActionId))
+            {
+                admitted = StoreTerminalUnsafe(CapacityBlock(requested, "Duplicate action id; existing action was not overwritten."));
+                return false;
+            }
+
+            var pending = _items.Values.Where(i => IsNonTerminal(i.State)).ToArray();
+            if (pending.Length >= _options.MaxNonTerminalItems)
+            {
+                admitted = StoreTerminalUnsafe(CapacityBlock(requested,
+                    $"Computer-use pending queue is full (cap {_options.MaxNonTerminalItems})."));
+                return false;
+            }
+            var bucket = HarnessBucket(requested.Action);
+            if (pending.Count(i => string.Equals(HarnessBucket(i.Action), bucket, StringComparison.Ordinal))
+                >= _options.MaxNonTerminalPerHarness)
+            {
+                admitted = StoreTerminalUnsafe(CapacityBlock(requested,
+                    $"Computer-use pending queue for this harness is full (cap {_options.MaxNonTerminalPerHarness})."));
+                return false;
+            }
+            if (_items.Count >= _options.MaxItems)
+            {
+                admitted = CapacityBlock(requested, "Computer-use record capacity is full.");
+                return false; // all retained records are live; never exceed the hard bound merely to record refusal
+            }
+            if (_items.TryAdd(requested.ActionId, requested))
+            {
+                admitted = requested;
+                return true;
+            }
+            admitted = StoreTerminalUnsafe(CapacityBlock(requested, "Duplicate action id; existing action was not overwritten."));
+            return false;
+        }
+    }
+
+    private CuBrokerItem CapacityBlock(CuBrokerItem requested, string reason)
+    {
+        var id = requested.ActionId;
+        if (_items.ContainsKey(id)) id = NewActionId();
+        var now = _utcNow();
+        return requested with
+        {
+            ActionId = id,
+            Action = requested.Action with { ActionId = id },
+            State = CuActionState.Blocked,
+            Verdict = CuVerdict.Block("broker-capacity", reason),
+            Error = reason,
+            UpdatedAt = now,
+            OperatorApproved = false,
+            ExecutionOwner = null,
+            ExecutionToken = null,
+        };
+    }
+
+    private CuBrokerItem StoreTerminal(CuBrokerItem item)
+    {
+        lock (_maintenanceLock)
+        {
+            ExpireStaleUnsafe();
+            return StoreTerminalUnsafe(item);
+        }
+    }
+
+    private CuBrokerItem StoreTerminalUnsafe(CuBrokerItem item)
+    {
+        PruneTerminalUnsafe(_options.MaxItems - 1);
+        if (_items.ContainsKey(item.ActionId)) item = CapacityBlock(item, "Duplicate action id; existing action was not overwritten.");
+        if (_items.Count < _options.MaxItems) _items.TryAdd(item.ActionId, item);
+        return item;
+    }
+
+    private void Maintain()
+    {
+        lock (_maintenanceLock)
+        {
+            ExpireStaleUnsafe();
+            PruneTerminalUnsafe(_options.MaxItems);
+        }
+    }
+
+    private void ExpireStaleUnsafe()
+    {
+        var now = _utcNow();
+        foreach (var pair in _items)
+        {
+            var item = pair.Value;
+            var ttl = item.State switch
+            {
+                CuActionState.Auditing => _options.AuditingTtl,
+                CuActionState.Held => _options.HeldTtl,
+                CuActionState.Approved => _options.ApprovedTtl,
+                CuActionState.Executing => _options.ExecutingTtl,
+                _ => TimeSpan.Zero,
+            };
+            if (ttl == TimeSpan.Zero || now - (item.UpdatedAt ?? item.CreatedAt) <= ttl) continue;
+            _items.TryUpdate(pair.Key, item with
+            {
+                State = CuActionState.Rejected,
+                Error = $"Computer-use action expired while {item.State}; re-submit.",
+                UpdatedAt = now,
+                OperatorApproved = false,
+                ExecutionOwner = null,
+                ExecutionToken = null,
+            }, item);
+        }
+    }
+
+    private void PruneTerminalUnsafe(int targetCount)
+    {
+        if (_items.Count <= targetCount) return;
+        foreach (var id in _items.Values
+                     .Where(i => !IsNonTerminal(i.State))
+                     .OrderBy(i => i.UpdatedAt ?? i.CreatedAt)
+                     .Take(_items.Count - targetCount)
+                     .Select(i => i.ActionId)
+                     .ToArray())
+            _items.TryRemove(id, out _);
+    }
+
+    private static string? NormalizeExecutionOwner(string? executionOwner)
+    {
+        var owner = executionOwner?.Trim();
+        return owner is { Length: >= 1 and <= 128 } && owner.All(c => !char.IsControl(c))
+            ? owner.ToLowerInvariant()
+            : null;
+    }
+
+    private string? ExecutionMismatch(CuBrokerItem item, CuModality modality,
+        string executionOwner, string executionToken)
+    {
+        if (_isHalted()) return "Computer use is halted (panic).";
+        if (item.State != CuActionState.Executing) return $"Action is {item.State}, not Executing.";
+        if (item.Action.Modality != modality) return "Executor modality does not own this action.";
+        var owner = NormalizeExecutionOwner(executionOwner);
+        if (owner is null || !string.Equals(item.ExecutionOwner, owner, StringComparison.Ordinal))
+            return "Executor identity does not own this action.";
+        if (!ExecutionTokensMatch(item.ExecutionToken, executionToken))
+            return "Execution lease is invalid.";
+        return null;
+    }
+
+    private static bool ExecutionTokensMatch(string? actual, string? supplied)
+    {
+        if (actual is not { Length: 64 } || supplied is not { Length: 64 }) return false;
+        try
+        {
+            return CryptographicOperations.FixedTimeEquals(Convert.FromHexString(actual), Convert.FromHexString(supplied));
+        }
+        catch (FormatException) { return false; }
     }
 }

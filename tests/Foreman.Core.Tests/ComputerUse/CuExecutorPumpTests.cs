@@ -115,4 +115,20 @@ public sealed class CuExecutorPumpTests
         Assert.Equal(1, ran);
         Assert.Equal(CuActionState.Completed, b.Get(item.ActionId)!.State);
     }
+
+    [Fact]
+    public async Task PumpOnce_PanicDuringFirstEffect_InvalidatesRestOfClaimedBatch()
+    {
+        var (b, first) = await ApprovedItem();
+        var second = await b.SubmitAsync(Desk("left_click"), new CuContext(Agent));
+        Assert.Equal(CuActionState.Approved, second.State);
+        var fake = new FakeExecutor { OnExec = _ => { b.OnPanicHalt(); return new CuExecResult(true, null, null); } };
+
+        var ran = await new CuExecutorPump(b, fake, batch: 4).PumpOnceAsync();
+
+        Assert.Equal(1, ran);
+        Assert.Single(fake.Ran); // second item was claimed, but its lease was voided before any effect
+        Assert.Equal(CuActionState.Rejected, b.Get(first.ActionId)!.State);
+        Assert.Equal(CuActionState.Rejected, b.Get(second.ActionId)!.State);
+    }
 }

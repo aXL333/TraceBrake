@@ -64,6 +64,15 @@ public sealed class SettingsSealTests
     [InlineData("adb")]
     [InlineData("adbHash")]
     [InlineData("mute")]
+    [InlineData("cuTabOverride")]
+    [InlineData("modalities")]
+    [InlineData("threshold")]
+    [InlineData("customHarness")]
+    [InlineData("pairedOrigin")]
+    [InlineData("deadMan")]
+    [InlineData("presenceTtl")]
+    [InlineData("sealHead")]
+    [InlineData("decoyPaths")]
     public void TamperingASecurityField_IsDetected(string field)
     {
         var s = Base();
@@ -89,30 +98,37 @@ public sealed class SettingsSealTests
                 break;
             case "adbHash":         s.AdbBridge.ExecutableSha256 = new string('0', 64); break;
             case "mute":            s.Mutes.Add(new MuteEntry { Scope = "category", Value = "cred" }); break;
+            case "cuTabOverride":   s.CuTabOverride = true; break;
+            case "modalities":      s.HarnessModalities["codex"] = ["self-check"]; break;
+            case "threshold":       s.EmergencyLevelTotalAlerts = 999; break;
+            case "customHarness":   s.CustomHarnessExes.Add("trusted-looking-agent.exe"); break;
+            case "pairedOrigin":    s.PairedExtensionOrigins.Add("chrome-extension://attacker"); break;
+            case "deadMan":         s.DeadMansSwitch.Enabled = !s.DeadMansSwitch.Enabled; break;
+            case "presenceTtl":     s.PresenceLock.ApprovalTtlSeconds = 300; break;
+            case "sealHead":        s.LogIntegrity.SealHeadEnabled = false; break;
+            case "decoyPaths":      s.DecoyCredentials.PlantedPaths.Add(@"C:\fake\vault.txt"); break;
         }
 
         Assert.Equal(SettingsSealVerdict.Tampered, SettingsSeal.Verify(s, seal, Secret));
     }
 
-    [Fact]   // changing a NON-security field (noise threshold) does NOT invalidate the seal
-    public void NonSecurityField_DoesNotInvalidate()
+    [Fact]
+    public void DenyByDefaultProjection_AlsoDetectsOperationalSettingEdits()
     {
         var s = Base();
         var seal = SettingsSeal.Compute(s, Secret);
         s.HangThresholdMinutes = 999;
         s.NotifyOnHang = false;
-        Assert.Equal(SettingsSealVerdict.Sealed, SettingsSeal.Verify(s, seal, Secret));
+        Assert.Equal(SettingsSealVerdict.Tampered, SettingsSeal.Verify(s, seal, Secret));
     }
 
-    [Fact]   // RequireUserVerification is DELIBERATELY not sealed: a silent flip to touch-only can't help a rogue
-             // agent (which still can't touch the key), and sealing it would only trip a false tamper verdict on
-             // upgrade for every existing install. Toggling it must leave the seal valid.
-    public void RequireUserVerification_IsNotSealed()
+    [Fact]
+    public void RequireUserVerification_IsSealedByDenyByDefaultProjection()
     {
         var s = Base();
         var seal = SettingsSeal.Compute(s, Secret);
         s.PresenceLock.RequireUserVerification = !s.PresenceLock.RequireUserVerification;
-        Assert.Equal(SettingsSealVerdict.Sealed, SettingsSeal.Verify(s, seal, Secret));
+        Assert.Equal(SettingsSealVerdict.Tampered, SettingsSeal.Verify(s, seal, Secret));
     }
 
     [Fact]   // the seal is order-independent (re-serialization can't cause a false tamper)
@@ -141,6 +157,16 @@ public sealed class SettingsSealTests
         var settings = Base();
         var oldSeal = SettingsSeal.LocalScheme
             + SettingsSeal.ComputeMac(SettingsSeal.LegacySecurityProjectionV2(settings), Secret);
+
+        Assert.Equal(SettingsSealVerdict.LegacySealed, SettingsSeal.Verify(settings, oldSeal, Secret));
+    }
+
+    [Fact]
+    public void PreviousV3Projection_IsRecognisedAndMigratedInsteadOfReportedTampered()
+    {
+        var settings = Base();
+        var oldSeal = SettingsSeal.LocalScheme
+            + SettingsSeal.ComputeMac(SettingsSeal.LegacySecurityProjectionV3(settings), Secret);
 
         Assert.Equal(SettingsSealVerdict.LegacySealed, SettingsSeal.Verify(settings, oldSeal, Secret));
     }

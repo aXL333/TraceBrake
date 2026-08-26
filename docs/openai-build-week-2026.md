@@ -81,7 +81,7 @@ The eligible extension includes:
 Foreman supports Windows 10/11 x64.
 
 1. For hands-on testing, download the newest maintained pre-release installer and `checksums-sha256.txt` from
-   [GitHub Releases](https://github.com/aXL333/Foreman/releases).
+   [GitHub Releases](https://github.com/aXL333/TraceBrake/releases).
 2. For deadline/eligibility review, use the immutable `v0.1.0-alpha3` tag at `c5fd504`. Do not treat
    post-deadline maintenance commits as submission-period work.
 3. Verify the installer checksum, then install and launch Foreman from the Windows tray.

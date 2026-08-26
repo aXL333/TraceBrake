@@ -64,6 +64,23 @@ public sealed class ExpectedTerminationLedger
     /// <summary>Convenience overload when the caller has no start time to match on.</summary>
     public bool WasExpected(int pid) => WasExpected(pid, null, out _);
 
+    /// <summary>
+    /// Withdraw a pre-recorded expectation when the broker's hardened termination attempt did not actually start.
+    /// Recording before the kill is necessary to beat process-exit notifications; removing on a synchronous refusal
+    /// prevents that failed attempt from suppressing a later raw termination of the still-live process.
+    /// </summary>
+    public bool Remove(int pid, DateTimeOffset? startTime)
+    {
+        lock (_gate)
+        {
+            Prune();
+            return _entries.RemoveAll(e =>
+                e.Pid == pid &&
+                (startTime is null || e.StartTime is null
+                 || Math.Abs((e.StartTime.Value - startTime.Value).TotalSeconds) <= 1)) > 0;
+        }
+    }
+
     private void Prune()
     {
         var cutoff = _now() - _window;
