@@ -1,0 +1,229 @@
+{
+  "specVersion": "1.0",
+  "declarantId": "software.example.supervisor",
+  "issuedUtc": "2026-09-01T00:00:00Z",
+  "expiresUtc": "2027-09-01T00:00:00Z",
+  "product": {
+    "name": "ExampleSupervisor",
+    "version": "1.0.0",
+    "vendor": "Example Software"
+  },
+  "components": [
+    {
+      "path": "ExampleSupervisor.exe",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "declaredBehaviours": [
+    {
+      "token": "process.enumerate",
+      "scope": "system-wide",
+      "components": [
+        "ExampleSupervisor.exe"
+      ],
+      "purpose": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+  ],
+  "supervisedSubjects": [
+    {
+      "kind": "coding-agent",
+      "identifier": "example-agent",
+      "bindingMethod": "process-ancestry"
+    }
+  ],
+  "contactUri": "https://example.invalid/issues",
+  "workingSet": [
+    {
+      "root": "%%USERPROFILE%%/w0",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w1",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w2",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w3",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w4",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w5",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w6",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w7",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w8",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w9",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w10",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w11",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w12",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w13",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w14",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w15",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w16",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w17",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w18",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w19",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w20",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w21",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w22",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w23",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w24",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w25",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w26",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w27",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w28",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w29",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w30",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    },
+    {
+      "root": "%%USERPROFILE%%/w31",
+      "reason": "build-output",
+      "churn": "low",
+      "source": "derived"
+    }
+  ]
+}

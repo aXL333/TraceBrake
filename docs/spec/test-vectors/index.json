@@ -1,0 +1,557 @@
+{
+  "specVersion": "1.0",
+  "spec": "../automation-declaration-v1.md",
+  "licence": "CC0-1.0",
+  "evaluationTimeUtc": "2026-09-05T12:00:00Z",
+  "note": "Environment facts live in each vector's 'env' object, never inside the declaration document, because spec section 4.3 forbids a document asserting its own validity. Vectors whose expect value is not VALID or INVALID exercise consumer behaviour rather than document validity.",
+  "expectValues": {
+    "VALID": "The document is valid. A consumer may use it for explanation only (5.2.8).",
+    "INVALID": "The consumer must treat the declaration as ABSENT (5.4).",
+    "VALID_BUT_UNCREDITED": "Structurally valid; must be given no more weight than absence (5.2.5).",
+    "ABSENT": "No declaration. Consumer behaviour must be identical to the no-format case (5.2.3)."
+  },
+  "vectors": [
+    {
+      "id": "valid-minimal",
+      "specSection": "4",
+      "expect": "VALID",
+      "why": "Minimum conforming document. Every other vector is a mutation of this one.",
+      "file": "valid-minimal.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "valid-no-working-set",
+      "specSection": "4.6",
+      "expect": "VALID",
+      "why": "workingSet is optional. Its absence is not a defect.",
+      "file": "valid-no-working-set.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "valid-full",
+      "specSection": "4",
+      "expect": "VALID",
+      "why": "Every optional section populated with in-bounds values.",
+      "file": "valid-full.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "valid-at-bounds",
+      "specSection": "5.4",
+      "expect": "VALID",
+      "why": "Exactly at every bound: 32 workingSet roots and a 200-character purpose. Bounds are inclusive.",
+      "file": "valid-at-bounds.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-signature-broken",
+      "specSection": "4.3, 5.2.4",
+      "expect": "INVALID",
+      "why": "Document is well formed but the detached signature does not verify. Treated as ABSENT, not as weakly credible.",
+      "file": "invalid-signature-broken.json",
+      "env": {
+        "signatureValid": false,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-component-hash-mismatch",
+      "specSection": "4.3, 5.2.4",
+      "expect": "INVALID",
+      "why": "Signature verifies but a components hash does not match the file on disk. The binary was replaced after signing.",
+      "file": "invalid-component-hash-mismatch.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": false,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-self-asserting-signed-field",
+      "specSection": "4.3, 5.3",
+      "expect": "INVALID",
+      "why": "Carries its own validity claim. A consumer must never trust a field asserting the document is signed or verified.",
+      "file": "invalid-self-asserting-signed-field.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-action",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'action'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-action.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-allow",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'allow'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-allow.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-exemption",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'exemption'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-exemption.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-trust",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'trust'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-trust.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-suppress",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'suppress'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-suppress.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-verdict",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'verdict'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-verdict.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-confidence",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'confidence'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-confidence.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-prohibited-whitelist",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains the prohibited field 'whitelist'. Fields in the section 5.3 list may never appear, in any version.",
+      "file": "invalid-prohibited-whitelist.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-unknown-field",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Contains a field not defined in section 4 and not on the prohibited list. The schema is closed, so unknown fields invalidate rather than being ignored.",
+      "file": "invalid-unknown-field.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-x-prefixed-extension",
+      "specSection": "5.5",
+      "expect": "INVALID",
+      "why": "Private or x- prefixed extensions are not permitted. Any mechanism letting an unknown key pass validation reopens the laundering channel that section 4.4 rule 1 closes.",
+      "file": "invalid-x-prefixed-extension.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-executable-content",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "Carries a CLSID and a library path. A declaration must never name executable content a consumer could be induced to load.",
+      "file": "invalid-executable-content.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-monitored-inventory",
+      "specSection": "4.5, 5.3",
+      "expect": "INVALID",
+      "why": "supervisedSubjects carries an inventory of processes observed on the local machine. The section describes what KIND of automation is supervised, never what has been seen.",
+      "file": "invalid-monitored-inventory.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-semantic-request-field",
+      "specSection": "5.3",
+      "expect": "INVALID",
+      "why": "The field name is not on the prohibited list, but its semantics express a request about consumer behaviour, which the section 5.3 catch-all forbids. Detecting this requires human review, so this vector is marked reviewOnly.",
+      "file": "invalid-semantic-request-field.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      },
+      "notes": "reviewOnly: a name-based validator cannot catch this. Implementers must apply the catch-all by judgement."
+    },
+    {
+      "id": "invalid-unknown-behaviour-token",
+      "specSection": "4.4 rule 1",
+      "expect": "INVALID",
+      "why": "Behaviour token outside the version 1.0 vocabulary. The WHOLE declaration is invalid; the unknown entry is not skipped.",
+      "file": "invalid-unknown-behaviour-token.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-unknown-scope",
+      "specSection": "4.4",
+      "expect": "INVALID",
+      "why": "scope outside the closed enumeration.",
+      "file": "invalid-unknown-scope.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-purpose-too-long",
+      "specSection": "4.4 rule 3, 5.4",
+      "expect": "INVALID",
+      "why": "purpose exceeds 200 characters.",
+      "file": "invalid-purpose-too-long.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-purpose-operational-detail",
+      "specSection": "4.4 rule 3",
+      "expect": "INVALID",
+      "why": "purpose names a port and an authentication scheme. Operational detail assists an attacker more than a consumer. Marked reviewOnly because catching every form of this needs judgement.",
+      "file": "invalid-purpose-operational-detail.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      },
+      "notes": "reviewOnly: the bundled validator flags an obvious port pattern only. Full enforcement is a review activity."
+    },
+    {
+      "id": "invalid-behaviour-component-not-declared",
+      "specSection": "4.4",
+      "expect": "INVALID",
+      "why": "A declaredBehaviours entry references a component absent from the components list, so the behaviour cannot be bound to a hashed file.",
+      "file": "invalid-behaviour-component-not-declared.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-working-set-too-many",
+      "specSection": "5.4",
+      "expect": "INVALID",
+      "why": "33 workingSet roots, one over the bound of 32.",
+      "file": "invalid-working-set-too-many.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-working-set-verb",
+      "specSection": "4.6",
+      "expect": "INVALID",
+      "why": "A workingSet entry carries an action. The section is descriptive and has no verbs; a declarant must not be able to express a request even if it wants to.",
+      "file": "invalid-working-set-verb.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-working-set-unknown-reason",
+      "specSection": "4.6",
+      "expect": "INVALID",
+      "why": "reason outside the closed enumeration.",
+      "file": "invalid-working-set-unknown-reason.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-document-too-large",
+      "specSection": "5.4",
+      "expect": "INVALID",
+      "why": "Every field is individually legal, but the document exceeds 64 KiB. The components array has no count bound of its own, so the document size limit is the backstop for every unbounded array in the schema.",
+      "file": "invalid-document-too-large.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-expired",
+      "specSection": "5.4",
+      "expect": "INVALID",
+      "why": "expiresUtc is in the past relative to the fixed evaluation time.",
+      "file": "invalid-expired.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-issued-in-future",
+      "specSection": "5.4",
+      "expect": "INVALID",
+      "why": "issuedUtc is in the future relative to the fixed evaluation time. A clock-skewed or backdated declarant.",
+      "file": "invalid-issued-in-future.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-unknown-spec-version",
+      "specSection": "5.4",
+      "expect": "INVALID",
+      "why": "Unrecognised specVersion. A consumer must not guess at a vocabulary it does not have.",
+      "file": "invalid-unknown-spec-version.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-pii-username",
+      "specSection": "5.1.8",
+      "expect": "INVALID",
+      "why": "An absolute path disclosing a user name. Declarants must use environment-variable forms.",
+      "file": "invalid-pii-username.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-pii-sid",
+      "specSection": "5.1.8",
+      "expect": "INVALID",
+      "why": "A security identifier in the document.",
+      "file": "invalid-pii-sid.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-under-declaration",
+      "specSection": "4.4 rule 2",
+      "expect": "INVALID",
+      "why": "The document is well formed, but the declarant was observed terminating processes without declaring process.terminate. Under-declaration invalidates, so minimising is strictly worse than over-declaring.",
+      "file": "invalid-under-declaration.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": [
+          "process.enumerate",
+          "process.terminate"
+        ]
+      },
+      "notes": "Runtime case. Requires a consumer that observes behaviour, not only document validation."
+    },
+    {
+      "id": "consumer-per-user-scope",
+      "specSection": "5.2.5",
+      "expect": "VALID_BUT_UNCREDITED",
+      "why": "A structurally valid declaration published in per-user scope. It is an assertion by whatever code runs as that user, including malware. A conforming consumer parses it and grants it nothing.",
+      "file": "consumer-per-user-scope.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "user",
+        "observedBehaviours": []
+      },
+      "notes": "Consumer test. Assert the per-user result is not treated as more credible than no declaration at all."
+    },
+    {
+      "id": "consumer-absence-is-not-negative",
+      "specSection": "5.2.3",
+      "expect": "ABSENT",
+      "why": "No declaration exists. A conforming consumer must behave identically to the case where the format was never invented. Penalising absence would make the format coercive.",
+      "env": {
+        "signatureValid": false,
+        "hashesMatch": false,
+        "scope": "none",
+        "observedBehaviours": []
+      },
+      "notes": "Consumer test. Assert byte-identical behaviour to a run with no declaration support compiled in."
+    },
+    {
+      "id": "invalid-bidi-override",
+      "specSection": "4.7, 5.4",
+      "expect": "INVALID",
+      "why": "purpose contains a right-to-left override. Bidirectional control characters let a string render differently from the bytes a reviewer approved, so they are rejected at parse rather than left to consumer sanitisation.",
+      "file": "invalid-bidi-override.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "invalid-control-character",
+      "specSection": "4.7, 5.4",
+      "expect": "INVALID",
+      "why": "product.name contains an embedded NUL. Control characters truncate or corrupt in downstream consumers, so they are rejected at parse.",
+      "file": "invalid-control-character.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      }
+    },
+    {
+      "id": "consumer-untrusted-strings",
+      "specSection": "5.2.6",
+      "expect": "VALID",
+      "why": "Structurally valid, with hostile but legally encoded content in every free-text field. A conforming consumer sanitises before rendering and never interpolates these into a path, command, query or rule.",
+      "file": "consumer-untrusted-strings.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      },
+      "notes": "Consumer test. Structural validity is expected; the assertion is about safe handling, not rejection."
+    },
+    {
+      "id": "consumer-duplicate-declarant-id",
+      "specSection": "4.1",
+      "expect": "VALID",
+      "why": "Same declarantId as valid-minimal but a newer issuedUtc. A consumer resolves in favour of the newest, treats the older as stale, and reports the collision.",
+      "file": "consumer-duplicate-declarant-id.json",
+      "env": {
+        "signatureValid": true,
+        "hashesMatch": true,
+        "scope": "machine",
+        "observedBehaviours": []
+      },
+      "notes": "Consumer test. Pair with valid-minimal; assert this one wins and the collision is reported."
+    }
+  ]
+}

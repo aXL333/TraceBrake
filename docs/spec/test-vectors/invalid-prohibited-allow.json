@@ -1,0 +1,38 @@
+{
+  "specVersion": "1.0",
+  "declarantId": "software.example.supervisor",
+  "issuedUtc": "2026-09-01T00:00:00Z",
+  "expiresUtc": "2027-09-01T00:00:00Z",
+  "product": {
+    "name": "ExampleSupervisor",
+    "version": "1.0.0",
+    "vendor": "Example Software"
+  },
+  "components": [
+    {
+      "path": "ExampleSupervisor.exe",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "declaredBehaviours": [
+    {
+      "token": "process.enumerate",
+      "scope": "system-wide",
+      "components": [
+        "ExampleSupervisor.exe"
+      ],
+      "purpose": "Builds the process tree used to attribute activity to a supervised session."
+    }
+  ],
+  "supervisedSubjects": [
+    {
+      "kind": "coding-agent",
+      "identifier": "example-agent",
+      "bindingMethod": "process-ancestry"
+    }
+  ],
+  "contactUri": "https://example.invalid/issues",
+  "allow": [
+    "%USERPROFILE%/src"
+  ]
+}

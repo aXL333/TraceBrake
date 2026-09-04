@@ -182,6 +182,20 @@ An entry in `workingSet` is a statement that churn occurs at a path. It is **not
 excluded, skipped, deprioritised or treated differently, and a consumer that implements it as one is non-conforming
 under Section 5.2.
 
+### 4.7 String content
+
+Every string value in a declaration MUST consist of printable characters only. A string MUST NOT contain a control
+character (U+0000 through U+001F, or U+007F) or a bidirectional formatting override (U+202A through U+202E, or
+U+2066 through U+2069).
+
+Both are rejected at parse rather than left to consumer sanitisation, because both cause a document to render
+differently from the bytes a reviewer approved. A bidirectional override lets a `purpose` string display text
+opposite to what it declares, which defeats the entire point of a document whose value is human review. An embedded
+control character truncates or corrupts unpredictably in downstream consumers.
+
+This does not relieve a consumer of Section 5.2.6. Declaration strings remain untrusted input after parsing, and
+rejection here is defence in depth rather than a substitute for sanitising at the point of use.
+
 ---
 
 ## 5. Conformance
@@ -272,8 +286,10 @@ A declaration is **invalid** if any of the following hold. A consumer MUST treat
 - Any field is present that is not defined in Section 4, or any field in Section 5.3 is present.
 - Any `declaredBehaviours.token` is outside the vocabulary for the declared `specVersion`.
 - The declarant is observed performing a behaviour with a vocabulary token that it did not declare.
+- Any string violates Section 4.7 by containing a control character or a bidirectional formatting override.
 - Any bound in Section 4 is exceeded: more than 32 `workingSet` roots, a `purpose` longer than 200 characters, or a
-  document larger than 64 KiB.
+  document larger than 64 KiB. Arrays without an explicit count bound of their own, such as `components`, are
+  constrained by the document size limit, which is the backstop for all of them.
 
 ### 5.5 Extension policy
 
@@ -284,15 +300,32 @@ channel that Section 4.4 rule 1 closes.
 
 ### 5.6 Conformance test vectors
 
-An implementation claiming conformance SHOULD be validated against the published test vector set, which MUST
-include, at minimum, one case for each of: a valid declaration; a declaration with a broken signature; a declaration
-whose component hash does not match disk; a declaration containing an unknown behaviour token; a declaration
-containing a prohibited field from Section 5.3; a declaration exceeding each bound in Section 5.4; and a declarant
-observed performing an undeclared behaviour.
+An implementation claiming conformance SHOULD be validated against the published test vector set in
+[`test-vectors/`](test-vectors/), which accompanies this specification under the same licence. It contains 41
+vectors covering every mechanically checkable rule in Sections 4 and 5.4, a reference validator, and the generator
+that produced them.
 
-A consumer implementation SHOULD additionally be tested for the negative requirement in Section 5.2.1, by asserting
-that no code path exists from declaration parsing to any scanning, scoring or blocking decision. This is a
-structural property and is testable by inspection.
+Each vector is a pure declaration document. Facts a consumer learns from its **environment** rather than from the
+document, namely whether the signature verified, whether component hashes matched disk, what behaviour was actually
+observed, and what scope the declaration was published in, live in `index.json` beside the vector and never inside
+the document. Placing them in the document would violate Section 4.3.
+
+Vectors carry one of four expectations: `VALID`, `INVALID` (the consumer must treat the declaration as absent),
+`VALID_BUT_UNCREDITED` (structurally valid but given no more weight than absence, per Section 5.2.5), and `ABSENT`
+(no declaration exists, and consumer behaviour must be identical to the no-format case, per Section 5.2.3).
+
+Two requirements cannot be expressed as document vectors, because they are structural properties of a consumer:
+
+- **Section 5.2.1** is tested by asserting that no code path exists from declaration parsing to any scanning,
+  scoring or blocking decision. This is checkable by inspection.
+- **Section 5.2.3** is tested by asserting behaviour byte-identical to a build compiled without declaration support
+  at all.
+
+Two further vectors are marked as requiring human judgement rather than automation. The Section 5.3 catch-all
+against fields whose *semantics* express a request cannot be caught by name matching, although in practice the
+closed-schema rule catches most instances because such a field is also an unknown one. The Section 4.4 rule 3
+prohibition on operational detail in `purpose` is likewise only partially automatable; the reference validator
+detects an obvious port pattern and no more.
 
 ---
 
