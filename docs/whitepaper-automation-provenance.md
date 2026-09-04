@@ -275,7 +275,9 @@ Not recommendations. A design violating any of these makes the world worse and s
    re-asserts at most once, then stops and tells the operator. Looping self-reassertion is indistinguishable from
    persistence behaviour and deserves to be flagged.
 10. **The schema may never grow an `action`, `allow`, `exempt`, `trust` or `suppress` field.** This belongs in the
-    conformance section of the specification, not in design convention. The entire safety argument rests on it.
+    conformance section of the specification, not in design convention. The entire safety argument rests on it. See
+    [the Automation Declaration format, section 5.3](spec/automation-declaration-v1.md), where this is normative and
+    permanent: a version of the specification introducing any of those fields is defined as not a successor to it.
 
 The unresolved tension, stated rather than mitigated away: the declaration's only value is that something eventually
 consumes it, and any consumption is a step toward a self-service allowlist. My answer is that consumption must be
