@@ -8,7 +8,8 @@ Only publish from `main` after that candidate passes the checks below.
 
 ## Required
 
-- Run `dotnet test .\Foreman.slnx -c Release --verbosity minimal`.
+- Run `powershell -NoProfile -File .\scripts\Invoke-DotNetTests.ps1 -Configuration Release` and retain the TRX evidence path it prints.
+  The script runs on Windows PowerShell 5.1 and on PowerShell 7 (`pwsh`); CI uses `pwsh`.
 - Run `dotnet build .\src\Foreman.App\Foreman.App.csproj -c Release`.
 - Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Test-ReleasePayload.ps1` against the
   release-equivalent `publish` directory and confirm all five payload executables carry the intended release version.

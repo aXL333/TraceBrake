@@ -1,11 +1,11 @@
 ## Summary
 
-- 
+-
 
 ## Verification
 
 - [ ] `dotnet build .\Foreman.slnx -c Release`
-- [ ] `dotnet test .\Foreman.slnx -c Release`
+- [ ] `powershell -NoProfile -File .\scripts\Invoke-DotNetTests.ps1 -Configuration Release -NoBuild`
 
 ## Safety / Privacy Notes
 

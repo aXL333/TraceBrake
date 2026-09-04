@@ -56,7 +56,8 @@ jobs:
       - name: Set up .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          # global.json is the single source of truth for the SDK band. See ci.yml.
+          global-json-file: global.json
 
       - name: Compute version
         id: ver
@@ -108,7 +109,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Browser vault policy bypass tests failed." }
 
       - name: Test release commit
-        run: dotnet test Foreman.slnx -c Release --verbosity minimal
+        shell: pwsh
+        run: ./scripts/Invoke-DotNetTests.ps1 -Configuration Release
 
       - name: Publish self-contained single-file
         env:
