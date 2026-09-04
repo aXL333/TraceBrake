@@ -4,6 +4,7 @@
 [Oo]ut/
 publish/
 artifacts/
+.artifacts/
 
 ## Visual Studio / Rider / VS Code
 .vs/

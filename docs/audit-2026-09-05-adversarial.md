@@ -68,7 +68,7 @@ Two independent defects, either of which alone is blocking:
 Every command in the docs begins `pwsh -NoProfile -File ...`, so the release checklist's first Required step is
 unexecutable as written by the person who owns the release.
 
-**2. The script fails on 5.1 before running any test.** Under `powershell.exe`:
+**2. The script has never worked, on any PowerShell.** It fails before running a single test:
 
 ```
 Invoke-DotNetTests.ps1 : Cannot convert 'System.String[]' to the type 'System.String'
@@ -78,30 +78,37 @@ required by parameter 'ChildPath'. Specified method is not supported.
 Traced to the exact line, first loop iteration:
 
 ```powershell
-$projectResults = Join-Path $resultsRoot $projectName    # line 83
+$projectName = $project.BaseName                         # line 82
+$projectResults = Join-Path $resultsRoot $projectName    # line 83, throws
 ```
 
-`$projectName` is `$project.BaseName`, so `$project` is a collection, so `$selectedProjects` holds the whole
-`FileInfo[]` as a single element. The cause is the `@( if (...) { $discoveredProjects } else { ... } )` construct on
-line 62: PowerShell 7 enumerates the array out of the `if` statement, Windows PowerShell 5.1 does not.
+Instrumenting in place showed `$project` is a `FileInfo` and `$resultsRoot` is a `String`, but `$projectName` is a
+**`String[]` of length 1**. The cause is a case-insensitive variable collision: `$projectName` resolves to the
+script's own `[string[]] $ProjectName` parameter, keeps that declared type constraint, and silently coerces the
+assigned string into a one-element array. Confirmed in isolation:
 
-This is **not** the `-ProjectName` filter bug reported yesterday. It fails identically with no arguments at all.
-The filter is fine; the script is PS7-only by accident.
+```powershell
+param([string[]] $ProjectName = @())
+$projectName = 'Foreman.Core.Tests'
+$projectName.GetType().FullName        # -> System.String[]
+```
 
-CI is unaffected because `windows-latest` ships `pwsh`. That is precisely the problem: **CI green will no longer
-mean the developer can reproduce it.** Every local verification path in the release checklist has been quietly
-routed through a shell that is not installed.
+This is version-independent. It is **not** the `-ProjectName` filter bug reported yesterday: it fails identically
+with no arguments at all, and it would fail on `pwsh` exactly as it fails on 5.1. **The script has never run
+successfully anywhere, which means the CI and release workflow changes that now depend on it would have failed on
+first push.**
 
-**Invariant:** a test entrypoint referenced by the release checklist must run on the shells the project actually
-supports, and the supported set must be stated.
+`pwsh` being absent is therefore a second, independent defect rather than the explanation. Both had to be fixed.
 
-**Fix:** replace line 62 with an explicit assignment that forces enumeration (`$selectedProjects =
-@($discoveredProjects)` in the empty branch, `@(foreach ...)` in the other), or index the loop. Then decide
-explicitly: either require PS7 and say so in `CONTRIBUTING.md` with an install line, or keep 5.1 compatibility and
-change every invocation to `powershell`. Do not leave it implicit.
+**Invariant:** a test entrypoint referenced by the release checklist must be executed successfully at least once
+before the workflows are switched over to it.
 
-**Proving test:** `powershell -NoProfile -File .\scripts\Invoke-DotNetTests.ps1 -Configuration Release` reaches at
-least the first `Testing <project>` line.
+**Fix (applied):** renamed the loop variable to `$projectBaseName` with a comment explaining the collision, and
+repointed the local invocations in `CONTRIBUTING.md`, `docs/release-checklist.md`, and the PR template at
+`powershell`, which is present on every Windows machine. CI keeps `shell: pwsh`.
+
+**Proving test:** `powershell -NoProfile -File .\scripts\Invoke-DotNetTests.ps1 -Configuration Release
+-ProjectName Foreman.McpServer.Tests` reports `Validated Foreman.McpServer.Tests: 238 test(s), 0 failed.`
 
 ---
 
@@ -391,9 +398,8 @@ Stated so this report is not read as more complete than it is.
   at launch) still fire.** The event log holds 1,000 entries and M1 is filling it at 79 alerts/hour, so the boot
   window is plausibly already evicted. I did not confirm eviction, and I am not claiming those findings are fixed
   or unfixed.
-- **The exact PS 5.1 versus PS 7 divergence in H1.** The failing line and the type error are confirmed
-  reproductions. The `@( if ... )` enumeration difference is the mechanism I infer from them; a standalone repro of
-  that construct did not reproduce it in isolation, so treat the line as certain and the mechanism as likely.
+- **Whether CI has ever actually run `Invoke-DotNetTests.ps1`.** The script could not have succeeded (H1), so the
+  workflow changes are presumed broken on first push rather than observed broken. I did not push to confirm.
 
 ---
 
@@ -411,10 +417,11 @@ Ordered by what unblocks what. Ownership matters because Codex is running concur
 
 ### Mine, safe to do in parallel with Codex
 
-2. **Fix `Invoke-DotNetTests.ps1` line 62 and decide the shell contract (H1).** One-line fix plus a documented
-   decision. It touches only `scripts/` and docs, both outside Codex's active files. Then run the full suite and
-   confirm or correct the 1,167 floor (L2).
-3. **Point the workflows at `global.json` (M3).** Two lines in `.github/workflows/`, no overlap with Codex.
+2. **DONE. Fixed the `$projectName` / `$ProjectName` collision and repointed the local invocations at
+   `powershell` (H1).** Verified by running a real suite. The 1,167 floor (L2) still needs confirming once H2
+   clears.
+3. **DONE. Both workflows now use `global-json-file: global.json` instead of `dotnet-version: '10.0.x'` (M3),**
+   and the doubled `pwsh -File` nesting inside an already-`pwsh` step was removed.
 4. **Run `Foreman.Core.Tests` the moment H2 clears** and report the real count. Do not trust this branch until it is
    green.
 

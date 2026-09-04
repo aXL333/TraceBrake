@@ -16,7 +16,7 @@ The solution file is `Foreman.slnx`.
 
 ```powershell
 dotnet build .\Foreman.slnx -c Release
-dotnet test .\Foreman.slnx -c Release
+powershell -NoProfile -File .\scripts\Invoke-DotNetTests.ps1 -Configuration Release -NoBuild
 ```
 
 CI runs restore, build, and tests on `windows-latest`.
