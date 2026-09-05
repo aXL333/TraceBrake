@@ -25,7 +25,7 @@ External party
 
 ## Lane 1 — File inbox (works everywhere)
 
-**Trigger:** create `W:\TOOLS\.cursor-inbox\<name>.md` (or `.txt` / `.msg`).
+**Trigger:** create `T:\TOOLS\.cursor-inbox\<name>.md` (or `.txt` / `.msg`).
 
 **Process:** agent reads → acts → moves to `.cursor-inbox/processed/`.
 
@@ -33,7 +33,7 @@ Works with:
 
 - Open Cursor agent (rule: `.cursor/rules/foreman-inbox-poll.mdc`)
 - Local `/loop` watcher (below)
-- Cursor Automation on a schedule or webhook (repo = `W:\TOOLS`, prompt checks only `.cursor-inbox/`)
+- Cursor Automation on a schedule or webhook (repo = `T:\TOOLS`, prompt checks only `.cursor-inbox/`)
 
 ## Lane 2 — Foreman mailbox (local, richer)
 
@@ -55,7 +55,7 @@ request_harness_review(
 **Cheap probe (no LLM):**
 
 ```powershell
-dotnet run --project W:\TOOLS\Foreman\src\Foreman.TestHarness -- --harness cursor --probe
+dotnet run --project T:\TOOLS\Foreman\src\Foreman.TestHarness -- --harness cursor --probe
 ```
 
 Exit codes: `0` idle, `1` pending mail, `2` Foreman down. One JSON line on stdout.
@@ -69,7 +69,7 @@ Uses the [Loop skill](file:///C:/Users/AxelW/.cursor/skills-cursor/loop/SKILL.md
 $interval = 15
 while ($true) {
   Start-Sleep -Seconds ($interval * 60)
-  & W:\TOOLS\Foreman\scripts\Poll-CursorInbox.ps1 -IntervalHint "${interval}m"
+  & T:\TOOLS\Foreman\scripts\Poll-CursorInbox.ps1 -IntervalHint "${interval}m"
 }
 ```
 
@@ -105,7 +105,7 @@ Draft prefill for the Automations editor: `Foreman/docs/cursor-inbox-automation-
 
 ## Install templates
 
-Canonical copies of the workspace-only inbox files live in `Foreman/docs/templates/`. `W:\TOOLS` is not a single git repo, so install (or refresh) them manually after clone or template updates: copy `Foreman/docs/templates/cursor-inbox-README.md` to `W:\TOOLS\.cursor-inbox\README.md`, and copy `Foreman/docs/templates/foreman-inbox-poll.mdc` to `W:\TOOLS\.cursor\rules\foreman-inbox-poll.mdc`. The live workspace paths are left untouched by Foreman commits.
+Canonical copies of the workspace-only inbox files live in `Foreman/docs/templates/`. `T:\TOOLS` is not a single git repo, so install (or refresh) them manually after clone or template updates: copy `Foreman/docs/templates/cursor-inbox-README.md` to `T:\TOOLS\.cursor-inbox\README.md`, and copy `Foreman/docs/templates/foreman-inbox-poll.mdc` to `T:\TOOLS\.cursor\rules\foreman-inbox-poll.mdc`. The live workspace paths are left untouched by Foreman commits.
 
 ## Files
 
