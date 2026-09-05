@@ -117,11 +117,14 @@ which code signing (which answers "who published this?") does not.
 - **Verify a download or an installed file:**
 
   ```
-  gh attestation verify <path-to-exe> --repo aXL333/Foreman
+  gh attestation verify <path-to-exe> --repo aXL333/TraceBrake
   ```
 
   A pass prints the source repo, commit, and workflow. Worth putting this one line in the release notes so
-  security-minded users can check what they ran.
+  security-minded users can check what they ran. The release workflow generates this same line from
+  `${{ github.repository }}` rather than a literal, so it cannot go stale if the repository is renamed again.
+  `aXL333/Foreman` was the previous name; GitHub still redirects it, but an attestation binds to the repository
+  recorded at build time, so always verify against the current name.
 - **Relation to the sidecar integrity gate:** provenance is a build-time supply-chain proof. It does not
   replace the runtime Authenticode signer-match check in `SidecarIntegrity` (which needs the SignPath cert to
   become active); the two are independent and both worth having.

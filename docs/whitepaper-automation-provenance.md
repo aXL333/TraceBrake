@@ -3,7 +3,7 @@
 ### In-session attribution for coding agents on developer machines, the workload container-scoped identity cannot reach
 
 **Blue Heeler Software** · Draft 0.2 · September 2026
-Contact: xredux@protonmail.com · Repository: github.com/aXL333/Foreman
+Contact: xredux@protonmail.com · Repository: github.com/aXL333/TraceBrake
 
 > Intended for publication under a permissive licence (CC0 or MIT), deliberately not GPL, so that a proprietary
 > vendor's counsel can read and implement from it without escalation.
@@ -461,4 +461,4 @@ https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-antivirus
 [9] A. Mishra, K. Sharad. *Observability for Delegated Execution in Agentic AI Systems.* arXiv, June 2026.
 https://arxiv.org/pdf/2606.09692
 
-[10] Corpus accompanying this paper: `tests/fixtures/av-corpus/` in github.com/aXL333/Foreman.
+[10] Corpus accompanying this paper: `tests/fixtures/av-corpus/` in github.com/aXL333/TraceBrake.
