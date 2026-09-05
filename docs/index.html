@@ -124,21 +124,24 @@
           .demo-deck__head .eyebrow{margin:0}
           .demo-deck__controls{display:flex;align-items:center;gap:.5rem}
           .demo-deck__btn{appearance:none;width:2.25rem;height:2.25rem;border-radius:999px;border:1px solid rgba(236,238,242,.16);background:transparent;color:#ECEEF2;font:inherit;cursor:pointer}
-          .demo-deck__btn:hover,.demo-deck__btn:focus-visible{border-color:#F2453A;outline:none}
+          .demo-deck__btn:hover,.demo-deck__btn:focus-visible{border-color:var(--amber);outline:none}
           .demo-deck__count{font-variant-numeric:tabular-nums;color:#8A94A6;font-size:.9rem;min-width:3.5rem;text-align:center}
           .demo-deck__track{list-style:none;margin:0;padding:0;display:grid}
           .demo-deck__slide{grid-area:1/1;opacity:0;transform:translateY(6px);transition:opacity .45s ease,transform .45s ease;pointer-events:none}
           .demo-deck__slide.is-active{opacity:1;transform:none;pointer-events:auto}
           .demo-deck__slide>*{max-width:72ch}
-          .demo-deck__tag{display:inline-block;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:#F2453A;margin-bottom:.6rem}
+          .demo-deck__tag{display:inline-block;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin-bottom:.6rem}
           .demo-deck__slide h3{margin:0 0 .75rem;font-size:clamp(1.35rem,2.4vw,1.9rem);line-height:1.15;color:#ECEEF2}
           .demo-deck__scene{margin:0 0 .9rem;color:#C7CCD6;line-height:1.55}
-          .demo-deck__proof{margin:0;padding:.85rem 1rem;border-left:3px solid #F2453A;background:rgba(242,69,58,.06);color:#C7CCD6;line-height:1.5;font-size:.95rem}
+          .demo-deck__proof{margin:0;padding:.85rem 1rem;border-left:3px solid var(--amber);background:rgba(255,189,46,.07);color:#C7CCD6;line-height:1.5;font-size:.95rem}
+          /* red is reserved for the stop: only the halt scenario wears it */
+          .demo-deck__slide.is-stop .demo-deck__tag{color:#F2453A}
+          .demo-deck__slide.is-stop .demo-deck__proof{border-left-color:#F2453A;background:rgba(242,69,58,.07)}
           .demo-deck__proof strong{color:#ECEEF2}
           .demo-deck__dots{display:flex;gap:.5rem;margin-top:1.1rem}
           .demo-deck__dot{appearance:none;width:.6rem;height:.6rem;padding:0;border-radius:999px;border:0;background:rgba(236,238,242,.2);cursor:pointer;transition:background .3s,transform .3s}
-          .demo-deck__dot[aria-selected="true"]{background:#F2453A;transform:scale(1.25)}
-          .demo-deck__dot:focus-visible{outline:2px solid #F2453A;outline-offset:3px}
+          .demo-deck__dot[aria-selected="true"]{background:var(--amber);transform:scale(1.25)}
+          .demo-deck__dot:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
           @media (prefers-reduced-motion:reduce){.demo-deck__slide{transition:none}}
         </style>
 
@@ -159,7 +162,7 @@
               <p class="demo-deck__scene">An agent runs in skip-permissions mode and fans out: shells spawning shells, a compiler, git, a script that outlives its turn. TraceBrake watches from outside the agent. Every child is attributed to the harness that spawned it, whether or not the agent knows TraceBrake exists.</p>
               <p class="demo-deck__proof"><strong>How:</strong> process-tree attribution by ancestry; orphans and hung children flagged; per-agent escalation through Watch, Alert, Alarm, Emergency. No flag, wrapper or plugin required.</p>
             </li>
-            <li class="demo-deck__slide" role="group" aria-roledescription="slide" aria-label="2 of 5">
+            <li class="demo-deck__slide is-stop" role="group" aria-roledescription="slide" aria-label="2 of 5">
               <span class="demo-deck__tag">02 · A floor, not a request</span>
               <h3>The stop does not travel through the pipe.</h3>
               <p class="demo-deck__scene">A desktop action stream is mid-batch. You hit STOP. Every pending action is rejected, not paused. Held keys and buttons are released so a half-finished drag cannot complete. The input sidecar is terminated, not asked. None of that rides the same channel the actions rode.</p>
