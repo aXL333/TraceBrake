@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/foreman-social-preview.png" alt="TraceBrake - safety oversight for AI coding agents">
+  <img src="docs/assets/its-all-about-the-brakes-social.png" alt="It's all about the brakes. TraceBrake: an independent handbrake for AI coding agents.">
 </p>
 
 <h1 align="center">TraceBrake</h1>
@@ -26,6 +26,22 @@
 > eligible extension, immutable submission snapshot, Codex collaboration record, and judge testing path.
 > Post-deadline security and packaging maintenance is identified separately and is not claimed as
 > submission-period work.
+
+## It's all about the brakes
+
+An agent's permission prompt is code in the agent's own process, governed by the agent's own settings, and one
+flag turns it off. TraceBrake is a separate process. It does not read those settings and does not need the
+agent's cooperation to see it or stop it. The Agent Handbrake spec calls that a second brake and sets out four
+properties it has to have: a separate mechanism; a stop that is a floor, not a request; one the agent cannot
+release; one a present human must.
+
+- [TraceBrake is the handbrake we need](docs/tracebrake-is-the-handbrake-we-need.md): the argument.
+- [The Agent Handbrake, v1.0](docs/spec/agent-handbrake-v1.md): the normative spec, CC0, so anyone can build
+  one and claim conformance.
+- [The plain-language version](docs/spec/agent-handbrake-explained.md): the same spec, talked through.
+
+TraceBrake does not yet claim conformance to its own spec. One known gap: the spec requires a documented halt
+latency bound, and TraceBrake's design doc gives the mechanism but lists the measurement as still open.
 
 ## Product Overview
 
