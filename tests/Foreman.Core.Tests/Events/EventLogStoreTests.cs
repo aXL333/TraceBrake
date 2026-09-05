@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Foreman.Core.Alerts;
 using Foreman.Core.Behavior;
 using Foreman.Core.Events;
 using Foreman.Core.Models;
@@ -39,6 +40,7 @@ public sealed class EventLogStoreTests : IDisposable
         new object[] { new InfoEvent(T, "src", "info msg") },
         new object[] { new MonitoringNoticeEvent(T, ForemanSeverity.Medium, "Foreman.McpInventory", "new server") },
         new object[] { new EscalationEvent(T, EscalationLevel.Alarm, EscalationLevel.Watch, "codex", "Codex CLI", "reason", 5, 3, 2, ["net", "cred"], "net-001", "pipe") },
+        new object[] { new HangOutcomeEvent(T, "Foreman.HangLearning", "operator label", "alert-1", 12, T, HangOutcomeKind.OperatorConfirmedHung, true) },
     };
 
     [Theory]
@@ -71,6 +73,22 @@ public sealed class EventLogStoreTests : IDisposable
         Assert.Equal("claude-code", e.HarnessId);
         Assert.Equal(ForemanSeverity.Critical, e.Severity);   // computed-in-ctor value survives
         Assert.Equal(["net", "cred", "priv"], e.CategoryList);
+    }
+
+    [Fact]
+    public void HangCandidate_PreservesLearningFeaturesAcrossRestart()
+    {
+        var features = new HangFeatureSnapshot(
+            1, 45, 90, .5, 100, 20, 4, 1, 3, 0,
+            HarnessActivity.Active, 30, 1, true);
+        var store = new EventLogStore(_dir);
+        store.Append(new HangDetectedEvent(
+            T, "Foreman.Monitor", "hung", 12, "worker.exe", 90, 45,
+            9, "shell.exe", 8, "codex", "codex.exe", features));
+
+        var loaded = Assert.IsType<HangDetectedEvent>(Assert.Single(new EventLogStore(_dir).Load()));
+
+        Assert.Equal(features, loaded.LearningFeatures);
     }
 
     [Fact]

@@ -19,6 +19,7 @@ public partial class AlertDetailWindow : Window
     private string? _targetHarnessIdSnapshot;
     private int? _targetPidSnapshot;
     private string? _targetProcessNameSnapshot;
+    private bool _hangFeedbackRecorded;
 
     /// <summary>Wired up by TrayController so the "Open Log" button can open the log window.</summary>
     public static Action? OpenLogRequested { get; set; }
@@ -69,6 +70,28 @@ public partial class AlertDetailWindow : Window
             "Foreman",
             $"Alert acknowledged: [{_event.Id}] {_event.Message[..Math.Min(80, _event.Message.Length)]}"));
         Close();
+    }
+
+    private void ActuallyHungClick(object sender, RoutedEventArgs e) =>
+        RecordHangFeedback(HangOutcomeKind.OperatorConfirmedHung, "Recorded: actually hung");
+
+    private void ExpectedIdleClick(object sender, RoutedEventArgs e) =>
+        RecordHangFeedback(HangOutcomeKind.OperatorExpectedIdle, "Recorded: expected idle");
+
+    private void HangUnsureClick(object sender, RoutedEventArgs e) =>
+        RecordHangFeedback(HangOutcomeKind.OperatorUnsure, "Recorded: unsure (excluded from training labels)");
+
+    private void RecordHangFeedback(HangOutcomeKind outcome, string status)
+    {
+        if (_hangFeedbackRecorded || _event is not HangDetectedEvent hang) return;
+
+        EventBus.Instance.Publish(HangLearning.Outcome(
+            hang, outcome, DateTimeOffset.UtcNow, operatorLabeled: true));
+        _hangFeedbackRecorded = true;
+        ActuallyHungButton.IsEnabled = false;
+        ExpectedIdleButton.IsEnabled = false;
+        HangUnsureButton.IsEnabled = false;
+        HangFeedbackStatus.Text = status;
     }
 
     private void OpenLogClick(object sender, RoutedEventArgs e)
@@ -874,6 +897,7 @@ public sealed class AlertDetailVm
     public string AttributionSummary { get; }
     public string AttributionCoverageLabel { get; }
     public IReadOnlyList<AttributionStepVm> AttributionSteps { get; }
+    public Visibility HangFeedbackVisibility { get; }
 
     public AlertDetailVm(ForemanEvent evt)
     {
@@ -899,6 +923,7 @@ public sealed class AlertDetailVm
         EscalationSummary        = string.Empty;
         WhyDangerous             = string.Empty;
         RecommendedAction     = string.Empty;
+        HangFeedbackVisibility = evt is HangDetectedEvent ? Visibility.Visible : Visibility.Collapsed;
 
         var attribution = AttributionChainBuilder.Build(
             evt,

@@ -53,6 +53,24 @@ public sealed class AlertResolverTests
     }
 
     [Fact]
+    public void Hang_Resolution_PublishesAppendOnlyOutcome()
+    {
+        var bus = new EventBus();
+        var outcomes = new List<HangOutcomeEvent>();
+        bus.Subscribe(e => { if (e is HangOutcomeEvent outcome) outcomes.Add(outcome); });
+        var resolver = new AlertResolver(bus, () => [], () => []);
+        var start = Now.AddHours(-2);
+        var h = Hang(5010, start, ago: 20);
+
+        resolver.Evaluate([h], [], Now);
+
+        var outcome = Assert.Single(outcomes);
+        Assert.Equal(h.Id, outcome.HangAlertId);
+        Assert.Equal(HangOutcomeKind.ProcessExited, outcome.Outcome);
+        Assert.False(outcome.OperatorLabeled);
+    }
+
+    [Fact]
     public void Hang_StaysOpenWhileStillSilent()
     {
         var start = Now.AddHours(-2);
