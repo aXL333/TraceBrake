@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="It’s all about the brakes. TraceBrake: an independent handbrake for AI coding agents.">
+  <title>It’s all about the brakes</title>
+  <!-- 1280x640 social preview. Same dark-mode palette as its-all-about-the-brakes.svg. -->
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <rect width="1280" height="640" fill="#0F1216"/>
+  <!-- Mark, scaled 1.7x -->
+  <g transform="translate(96 150) scale(1.7)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M111.3 140 A72 72 0 0 0 90 98.2" stroke="#8A94A6" stroke-width="2" opacity="0.45"/>
+    <path d="M111.3 140 A72 72 0 0 0 90 98.2" stroke="#8A94A6" stroke-width="7" stroke-dasharray="3 8" stroke-linecap="butt"/>
+    <path d="M8 172 H150" stroke="#8A94A6" stroke-width="8"/>
+    <path d="M40 150 L128 52" stroke="#ECEEF2" stroke-width="20"/>
+    <path d="M94.6 89.2 L128 52" stroke="#F2453A" stroke-width="34" opacity="0.55" filter="url(#glow)"/>
+    <path d="M94.6 89.2 L128 52" stroke="#F2453A" stroke-width="30"/>
+    <circle cx="142" cy="36" r="8" fill="#ECEEF2"/>
+    <circle cx="40" cy="150" r="13" fill="#ECEEF2"/>
+    <circle cx="40" cy="150" r="5" fill="#F2453A"/>
+  </g>
+  <g font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="440" y="250" font-size="30" font-weight="600" letter-spacing="8" fill="#8A94A6">IT’S ALL ABOUT THE</text>
+    <text x="434" y="360" font-size="120" font-weight="800" letter-spacing="-3" fill="#ECEEF2">BRAKES<tspan fill="#F2453A">.</tspan></text>
+    <text x="440" y="430" font-size="28" font-weight="500" fill="#C7CCD6">A separate mechanism. A stop that is a floor, not a request.</text>
+    <text x="440" y="470" font-size="28" font-weight="500" fill="#C7CCD6">The agent cannot release it. A human must.</text>
+    <text x="440" y="548" font-size="24" font-weight="600" letter-spacing="2" fill="#8A94A6">TRACEBRAKE  ·  github.com/aXL333/TraceBrake</text>
+  </g>
+</svg>

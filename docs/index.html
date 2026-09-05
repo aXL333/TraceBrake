@@ -4,12 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080b10">
-  <meta name="description" content="TraceBrake is the human-controlled safety broker and black box for AI agents on Windows.">
-  <meta property="og:title" content="TraceBrake — Agent safety for Windows">
-  <meta property="og:description" content="See every agent. Gate every action. Keep the human in control.">
+  <meta name="description" content="It’s all about the brakes. TraceBrake is an independent handbrake for AI coding agents on Windows: a separate mechanism, a stop that is a floor, one the agent cannot release, one a human must.">
+  <meta property="og:title" content="TraceBrake — It’s all about the brakes">
+  <meta property="og:description" content="An independent handbrake for AI coding agents. A separate mechanism. A stop that is a floor, not a request. The agent cannot release it. A human must.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://tracebrake.com/">
-  <meta property="og:image" content="assets/foreman-social-preview.png">
+  <meta property="og:image" content="https://tracebrake.com/assets/its-all-about-the-brakes-social.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta name="twitter:card" content="summary_large_image">
   <title>TraceBrake — Agent safety for Windows</title>
   <link rel="canonical" href="https://tracebrake.com/">
   <script>document.documentElement.classList.add('js')</script>
@@ -31,6 +34,7 @@
     </a>
 
     <nav class="site-nav" aria-label="Primary navigation">
+      <a href="#brakes">Brakes</a>
       <a href="#why">Why</a>
       <a href="#capabilities">Capabilities</a>
       <a href="#control-loop">Control loop</a>
@@ -91,6 +95,139 @@
       <p>SEE EVERY AGENT</p><i aria-hidden="true"></i>
       <p>GATE EVERY ACTION</p><i aria-hidden="true"></i>
       <p>KEEP THE HUMAN IN CONTROL</p>
+    </section>
+
+    <section class="section problem" id="brakes">
+      <div class="section__intro reveal">
+        <p class="eyebrow">It’s all about the brakes</p>
+        <h2>The permission prompt runs inside the agent.<br><em>TraceBrake does not.</em></h2>
+      </div>
+      <div class="problem__body reveal" data-delay="1">
+        <p class="problem__lead">
+          An agent's permission prompt is code in the agent's own process, governed by the agent's own
+          settings, and one flag turns it off. TraceBrake is a separate process. It does not read those
+          settings and does not need the agent's cooperation to see it or stop it. The Agent Handbrake
+          spec calls that a second brake and sets out four properties it has to have.
+        </p>
+        <div class="failure-list">
+          <article><span>01</span><p>A separate mechanism, outside the agent</p></article>
+          <article><span>02</span><p>A stop that is a floor, not a request</p></article>
+          <article><span>03</span><p>The agent cannot release it</p></article>
+          <article><span>04</span><p>A present human must</p></article>
+        </div>
+      </div>
+
+      <div class="reveal" data-delay="2" style="grid-column:1/-1">
+        <style>
+          .demo-deck{margin-top:0;max-width:1040px;padding:1.5rem;border-radius:20px;background:#0F1216;border:1px solid rgba(236,238,242,.08);box-shadow:0 30px 80px rgba(0,0,0,.35)}
+          .demo-deck__head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+          .demo-deck__head .eyebrow{margin:0}
+          .demo-deck__controls{display:flex;align-items:center;gap:.5rem}
+          .demo-deck__btn{appearance:none;width:2.25rem;height:2.25rem;border-radius:999px;border:1px solid rgba(236,238,242,.16);background:transparent;color:#ECEEF2;font:inherit;cursor:pointer}
+          .demo-deck__btn:hover,.demo-deck__btn:focus-visible{border-color:#F2453A;outline:none}
+          .demo-deck__count{font-variant-numeric:tabular-nums;color:#8A94A6;font-size:.9rem;min-width:3.5rem;text-align:center}
+          .demo-deck__track{list-style:none;margin:0;padding:0;display:grid}
+          .demo-deck__slide{grid-area:1/1;opacity:0;transform:translateY(6px);transition:opacity .45s ease,transform .45s ease;pointer-events:none}
+          .demo-deck__slide.is-active{opacity:1;transform:none;pointer-events:auto}
+          .demo-deck__slide>*{max-width:72ch}
+          .demo-deck__tag{display:inline-block;font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:#F2453A;margin-bottom:.6rem}
+          .demo-deck__slide h3{margin:0 0 .75rem;font-size:clamp(1.35rem,2.4vw,1.9rem);line-height:1.15;color:#ECEEF2}
+          .demo-deck__scene{margin:0 0 .9rem;color:#C7CCD6;line-height:1.55}
+          .demo-deck__proof{margin:0;padding:.85rem 1rem;border-left:3px solid #F2453A;background:rgba(242,69,58,.06);color:#C7CCD6;line-height:1.5;font-size:.95rem}
+          .demo-deck__proof strong{color:#ECEEF2}
+          .demo-deck__dots{display:flex;gap:.5rem;margin-top:1.1rem}
+          .demo-deck__dot{appearance:none;width:.6rem;height:.6rem;padding:0;border-radius:999px;border:0;background:rgba(236,238,242,.2);cursor:pointer;transition:background .3s,transform .3s}
+          .demo-deck__dot[aria-selected="true"]{background:#F2453A;transform:scale(1.25)}
+          .demo-deck__dot:focus-visible{outline:2px solid #F2453A;outline-offset:3px}
+          @media (prefers-reduced-motion:reduce){.demo-deck__slide{transition:none}}
+        </style>
+
+        <div class="demo-deck" data-demo-deck aria-roledescription="carousel" aria-label="Five scenarios">
+          <div class="demo-deck__head">
+            <p class="eyebrow">Five scenarios <span style="color:#8A94A6;letter-spacing:0;text-transform:none;font-weight:400">· described, not recorded; each names the mechanism in the source</span></p>
+            <div class="demo-deck__controls">
+              <button type="button" class="demo-deck__btn" data-deck-prev aria-label="Previous demo">←</button>
+              <span class="demo-deck__count" data-deck-count aria-live="polite">1 / 5</span>
+              <button type="button" class="demo-deck__btn" data-deck-next aria-label="Next demo">→</button>
+            </div>
+          </div>
+          <ol class="demo-deck__track" data-deck-track>
+            <li class="demo-deck__slide is-active" role="group" aria-roledescription="slide" aria-label="1 of 5">
+              <span class="demo-deck__tag">01 · A separate mechanism</span>
+              <h3>You turned the permissions off. The brake did not notice.</h3>
+              <p class="demo-deck__scene">An agent runs in skip-permissions mode and fans out: shells spawning shells, a compiler, git, a script that outlives its turn. TraceBrake watches from outside the agent. Every child is attributed to the harness that spawned it, whether or not the agent knows TraceBrake exists.</p>
+              <p class="demo-deck__proof"><strong>How:</strong> process-tree attribution by ancestry; orphans and hung children flagged; per-agent escalation through Watch, Alert, Alarm, Emergency. No flag, wrapper or plugin required.</p>
+            </li>
+            <li class="demo-deck__slide" role="group" aria-roledescription="slide" aria-label="2 of 5">
+              <span class="demo-deck__tag">02 · A floor, not a request</span>
+              <h3>The stop does not travel through the pipe.</h3>
+              <p class="demo-deck__scene">A desktop action stream is mid-batch. You hit STOP. Every pending action is rejected, not paused. Held keys and buttons are released so a half-finished drag cannot complete. The input sidecar is terminated, not asked. None of that rides the same channel the actions rode.</p>
+              <p class="demo-deck__proof"><strong>How:</strong> the halt is an access-controlled memory-mapped flag plus <code>BlockInput</code>, a synthetic release-all and <code>TerminateProcess</code>; the sidecar re-reads the flag before every injected input; a panic epoch refuses anything approved before the stop. Latency under a flooded capture channel is designed for and listed as a still-open on-device measurement.</p>
+            </li>
+            <li class="demo-deck__slide" role="group" aria-roledescription="slide" aria-label="3 of 5">
+              <span class="demo-deck__tag">03 · The agent cannot release it</span>
+              <h3>It asked nicely. Then it asked as someone else.</h3>
+              <p class="demo-deck__scene">The harness calls <code>acknowledge_alert</code> on a Critical finding: refused. It asks for kill authority over its own children: there is none to grant. It reconnects claiming another harness's name: the name changes where a question is sent, never what is authorised.</p>
+              <p class="demo-deck__proof"><strong>How:</strong> High and Critical acknowledgements are rejected at the tool; killing is an operator action in the UI; self-declared identity is advisory only, never an input to authorisation.</p>
+            </li>
+            <li class="demo-deck__slide" role="group" aria-roledescription="slide" aria-label="4 of 5">
+              <span class="demo-deck__tag">04 · A human must</span>
+              <h3>Release needs a face, not a token.</h3>
+              <p class="demo-deck__scene">The stop is on. A process holding your session, your cookies and your bearer token tries to resume. It cannot. Resuming goes through the same presence gate as the most sensitive desktop actions: Windows Hello or a FIDO2 key, a thing a program running as you cannot satisfy on its own.</p>
+              <p class="demo-deck__proof"><strong>How:</strong> panic resume is routed through PresenceGuard, the same gate that binds desktop computer use; when no authenticator is enrolled the gate fails closed rather than open.</p>
+            </li>
+            <li class="demo-deck__slide" role="group" aria-roledescription="slide" aria-label="5 of 5">
+              <span class="demo-deck__tag">05 · Sight before the pull</span>
+              <h3>You see it before you stop it.</h3>
+              <p class="demo-deck__scene">A new MCP server appears in an agent's config overnight. TraceBrake baselined the set yesterday and raises it this morning. Opt in, and it reads the server's tool descriptions and flags "ignore previous instructions" hiding in one of them. You pull the brake having looked.</p>
+              <p class="demo-deck__proof"><strong>How:</strong> config-only MCP inventory with no network access; an opt-in tool-description injection scan that never launches a stdio server; an append-only event log with ordering integrity.</p>
+            </li>
+          </ol>
+          <div class="demo-deck__dots" role="tablist" aria-label="Choose a demo" data-deck-dots></div>
+        </div>
+
+        <script>
+          (function(){
+            var deck=document.querySelector('[data-demo-deck]'); if(!deck) return;
+            var slides=[].slice.call(deck.querySelectorAll('.demo-deck__slide'));
+            var dots=deck.querySelector('[data-deck-dots]'), count=deck.querySelector('[data-deck-count]');
+            var i=0, timer=null, reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            slides.forEach(function(_,n){
+              var b=document.createElement('button'); b.type='button'; b.className='demo-deck__dot'; b.setAttribute('role','tab');
+              b.setAttribute('aria-label','Demo '+(n+1)); b.addEventListener('click',function(){go(n,true)}); dots.appendChild(b);
+            });
+            function go(n,manual){
+              i=(n+slides.length)%slides.length;
+              slides.forEach(function(s,k){s.classList.toggle('is-active',k===i); s.setAttribute('aria-hidden',k===i?'false':'true')});
+              [].forEach.call(dots.children,function(d,k){d.setAttribute('aria-selected',k===i?'true':'false')});
+              count.textContent=(i+1)+' / '+slides.length;
+              if(manual) restart();
+            }
+            function tick(){go(i+1,false)}
+            function restart(){ if(timer) clearInterval(timer); if(!reduced) timer=setInterval(tick,7000); }
+            deck.querySelector('[data-deck-prev]').addEventListener('click',function(){go(i-1,true)});
+            deck.querySelector('[data-deck-next]').addEventListener('click',function(){go(i+1,true)});
+            deck.addEventListener('keydown',function(e){ if(e.key==='ArrowLeft'){go(i-1,true)} if(e.key==='ArrowRight'){go(i+1,true)} });
+            deck.addEventListener('mouseenter',function(){ if(timer) clearInterval(timer); timer=null });
+            deck.addEventListener('mouseleave',restart);
+            deck.addEventListener('focusin',function(){ if(timer) clearInterval(timer); timer=null });
+            deck.addEventListener('focusout',function(e){ if(!deck.contains(e.relatedTarget)) restart() });
+            go(0,false); restart();
+          })();
+        </script>
+
+        <p style="margin:1.75rem 0 0">
+          <img src="assets/its-all-about-the-brakes.svg" alt="It’s all about the brakes" width="720" height="220" style="max-width:100%;height:auto;border-radius:20px;display:block">
+        </p>
+        <div class="hero__actions" style="margin-top:1.5rem">
+          <a class="button button--primary" href="https://github.com/aXL333/TraceBrake/blob/main/docs/tracebrake-is-the-handbrake-we-need.md">Read the argument <span aria-hidden="true">↗</span></a>
+          <a class="button button--quiet" href="https://github.com/aXL333/TraceBrake/blob/main/docs/spec/agent-handbrake-v1.md">The Agent Handbrake spec, CC0 <span aria-hidden="true">↗</span></a>
+        </div>
+        <p style="margin-top:1rem;opacity:.75">
+          TraceBrake does not yet claim conformance to its own spec. The spec says so.
+          <a href="https://github.com/aXL333/TraceBrake/blob/main/docs/spec/agent-handbrake-explained.md">Plain-language version.</a>
+        </p>
+      </div>
     </section>
 
     <section class="section problem" id="why">
