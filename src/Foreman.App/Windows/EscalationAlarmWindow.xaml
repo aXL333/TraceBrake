@@ -38,7 +38,7 @@
             </StackPanel>
         </Border>
 
-        <!-- ── Harness name + trigger ────────────────────────────────────── -->
+        <!-- ── Trigger first: this is the operator's priority information ── -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -46,26 +46,31 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="HARNESS" FontSize="9" FontWeight="Bold"
-                           Foreground="{StaticResource AccentBrush}" Margin="0,0,0,3" />
-                <TextBlock Text="{Binding HarnessDisplayName}"
-                           FontSize="16" FontWeight="SemiBold" />
-            </StackPanel>
-
-            <Border Grid.Column="2" Background="#FF1A0808" CornerRadius="4" Padding="10,6">
+            <Border Grid.Column="0" Background="#FF1A0808" BorderBrush="#FF5A1818"
+                    BorderThickness="1" CornerRadius="4" Padding="12,8">
                 <StackPanel>
                     <TextBlock Text="TRIGGER RULE" FontSize="9" FontWeight="Bold"
                                Foreground="{StaticResource AccentBrush}" Margin="0,0,0,3" />
-                    <StackPanel Orientation="Horizontal">
+                    <WrapPanel Orientation="Horizontal">
                         <TextBlock Text="{Binding TriggerRuleId}"
                                    FontFamily="Consolas, Courier New" FontSize="11"
                                    Foreground="#FFFF8888" Margin="0,0,6,0" />
                         <TextBlock Text="{Binding TriggerRuleName}"
-                                   FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
-                    </StackPanel>
+                                   FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                    </WrapPanel>
+                    <TextBlock Text="{Binding TriggerDetail}" TextWrapping="Wrap"
+                               FontFamily="Consolas, Courier New" FontSize="10"
+                               Foreground="{StaticResource TextMutedBrush}" Margin="0,6,0,0" />
                 </StackPanel>
             </Border>
+
+            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock Text="HARNESS" FontSize="9" FontWeight="Bold"
+                           Foreground="{StaticResource AccentBrush}" Margin="0,0,0,3" />
+                <TextBlock Text="{Binding HarnessDisplayName}"
+                           FontSize="14" FontWeight="SemiBold" />
+            </StackPanel>
         </Grid>
 
         <!-- ── Session summary ───────────────────────────────────────────── -->

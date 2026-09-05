@@ -172,7 +172,8 @@ public sealed record EscalationEvent(
     int CategoryCount,
     string[] CategoryList,
     string TriggerRuleId,
-    string TriggerRuleName
+    string TriggerRuleName,
+    string TriggerDetail = ""
 ) : ForemanEvent(
     Timestamp,
     NewLevel >= EscalationLevel.Emergency ? ForemanSeverity.Critical :

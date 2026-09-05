@@ -147,7 +147,8 @@ public sealed class BehaviorTracker : IEventSink
             profile.CategoryCount,
             profile.Categories.ToArray(),
             trigger.RuleId,
-            trigger.RuleName));
+            trigger.RuleName,
+            trigger.CommandLine));
     }
 
     private static string BuildReason(BehaviorProfile p, EscalationLevel newLevel, CommandAlertEvent trigger)

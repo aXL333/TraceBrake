@@ -1,4 +1,5 @@
 using Foreman.Core.Behavior;
+using Foreman.Core.Alerts;
 using Foreman.Core.Events;
 using Foreman.Core.Models;
 using Foreman.Core.Settings;
@@ -150,6 +151,7 @@ public sealed class EscalationAlarmVm
     public string HarnessDisplayName { get; }
     public string TriggerRuleId     { get; }
     public string TriggerRuleName   { get; }
+    public string TriggerDetail     { get; }
     public int    TotalAlerts       { get; }
     public int    UniqueRules       { get; }
     public string CategoriesLabel   { get; }
@@ -162,6 +164,10 @@ public sealed class EscalationAlarmVm
         HarnessDisplayName = evt.HarnessDisplayName;
         TriggerRuleId      = evt.TriggerRuleId;
         TriggerRuleName    = evt.TriggerRuleName;
+        var triggerExcerpt = AlertPopupText.DetailExcerpt(evt.TriggerDetail, 220);
+        TriggerDetail      = triggerExcerpt.Length > 0
+            ? $"Observed: {triggerExcerpt}"
+            : "No triggering command excerpt was captured; open the Event Log for the contributing events.";
         TotalAlerts        = evt.TotalAlerts;
         UniqueRules        = evt.UniqueRules;
         CategoriesLabel    = evt.CategoryList.Length > 0
