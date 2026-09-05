@@ -88,6 +88,7 @@ public static class SecretRedactor
     public static ForemanEvent RedactEvent(ForemanEvent evt) => evt switch
     {
         CommandAlertEvent c => c with { CommandLine = Redact(c.CommandLine), Message = Redact(c.Message) },
+        EscalationEvent e => e with { TriggerDetail = Redact(e.TriggerDetail), Message = Redact(e.Message) },
         // PermissionViolationEvent carries the offending path/command in Detail, which is persisted — mask it too.
         PermissionViolationEvent p => p with { Message = Redact(p.Message), Detail = Redact(p.Detail) },
         _                   => evt with { Message = Redact(evt.Message) },

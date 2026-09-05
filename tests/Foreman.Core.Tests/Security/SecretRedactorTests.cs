@@ -160,4 +160,19 @@ public sealed class SecretRedactorTests
         Assert.DoesNotContain("abcdef1234567890", r.Detail);
         Assert.DoesNotContain("ghp_1234567890", r.Message);
     }
+
+    [Fact]
+    public void RedactEvent_Escalation_MasksTriggerDetail()
+    {
+        var evt = new EscalationEvent(
+            DateTimeOffset.UnixEpoch, Behavior.EscalationLevel.Emergency, Behavior.EscalationLevel.Alarm,
+            "claude-code", "Claude Code", "reason", 10, 2, 1, ["win"],
+            "win-002", "PowerShell execution policy bypass",
+            "powershell --api-key abcdef1234567890 -ExecutionPolicy Bypass");
+
+        var r = Assert.IsType<EscalationEvent>(SecretRedactor.RedactEvent(evt));
+
+        Assert.Contains(Mask, r.TriggerDetail);
+        Assert.DoesNotContain("abcdef1234567890", r.TriggerDetail);
+    }
 }

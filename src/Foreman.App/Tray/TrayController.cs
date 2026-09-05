@@ -380,9 +380,7 @@ public sealed class TrayController : IEventSink, IDisposable
                 _                         => ("TraceBrake — Alert",     H.NotifyIcon.Core.NotificationIcon.Warning),
             };
             _lastBalloonEvent = esc;
-            TryShowNotification("escalation alert", title,
-                $"{esc.HarnessDisplayName}: {esc.TotalAlerts} alerts, {esc.UniqueRules} rules\n(Click for details)",
-                icon);
+            TryShowNotification("escalation alert", title, AlertPopupText.BuildBody(esc), icon);
             return;
         }
 
@@ -390,7 +388,7 @@ public sealed class TrayController : IEventSink, IDisposable
         {
             _lastBalloonEvent = evt;
             TryShowNotification("critical alert", "TraceBrake - Critical Alert",
-                evt.Message + "\n(Click for details)",
+                AlertPopupText.BuildBody(evt),
                 H.NotifyIcon.Core.NotificationIcon.Error);
         }
         else if (evt.Severity == ForemanSeverity.Medium && _settings.NotifyOnWarning)
@@ -399,7 +397,7 @@ public sealed class TrayController : IEventSink, IDisposable
             // event is still logged, counted, shown in the dashboard, and escalated. Notification spam off.
             _lastBalloonEvent = evt;
             TryShowNotification("warning alert", "TraceBrake - Warning",
-                evt.Message + "\n(Click for details)",
+                AlertPopupText.BuildBody(evt),
                 H.NotifyIcon.Core.NotificationIcon.Warning);
         }
     }
