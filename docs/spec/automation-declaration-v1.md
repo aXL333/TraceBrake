@@ -103,7 +103,7 @@ Where a registration key is used:
   "workingSet": [
     { "root": "%USERPROFILE%/src", "reason": "build-output", "churn": "high", "source": "user-configured" }
   ],
-  "contactUri": "https://github.com/aXL333/Foreman/issues"
+  "contactUri": "https://github.com/aXL333/TraceBrake/issues"
 }
 ```
 

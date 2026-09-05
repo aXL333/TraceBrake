@@ -341,7 +341,7 @@ jobs:
             ''
             '**Browser extensions:** both unpacked MV3 extensions are included under the installed `extensions` folder. See the README for Chrome loading and pairing steps.'
             ''
-            'Verify provenance with `gh attestation verify <installer.exe> --repo aXL333/Foreman`.'
+            'Verify provenance with `gh attestation verify <installer.exe> --repo ${{ github.repository }}`.'
             'TRACEBRAKE_RELEASE_BODY'
           ) >> $env:GITHUB_OUTPUT
 
