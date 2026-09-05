@@ -209,6 +209,26 @@
                 <TextBlock Text="{Binding WhyDangerous}" Style="{StaticResource BodyText}" Margin="0,0,0,18" />
                 <TextBlock Text="RECOMMENDED ACTION" Style="{StaticResource SectionHeader}" />
                 <TextBlock Text="{Binding RecommendedAction}" Style="{StaticResource BodyText}" />
+
+                <Border x:Name="HangFeedbackPanel" Background="#FF11151E" BorderBrush="#FF34445A"
+                        BorderThickness="1" CornerRadius="5" Padding="12,10" Margin="0,18,0,0"
+                        Visibility="{Binding HangFeedbackVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="HELP TRAIN HANG DETECTION" Style="{StaticResource SectionHeader}" />
+                        <TextBlock Text="Was this process genuinely stuck? This records a local training label only; it does not terminate, mute, or change monitoring."
+                                   Style="{StaticResource BodyText}" FontSize="11" Margin="0,0,0,8" />
+                        <WrapPanel>
+                            <Button x:Name="ActuallyHungButton" Content="Actually hung" Click="ActuallyHungClick"
+                                    Margin="0,0,8,6" Background="#FF34191A" BorderBrush="#FF8A3A3A" />
+                            <Button x:Name="ExpectedIdleButton" Content="Expected idle" Click="ExpectedIdleClick"
+                                    Margin="0,0,8,6" Background="#FF17311F" BorderBrush="#FF3E8A57" />
+                            <Button x:Name="HangUnsureButton" Content="Unsure" Click="HangUnsureClick"
+                                    Margin="0,0,8,6" />
+                            <TextBlock x:Name="HangFeedbackStatus" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{StaticResource AccentBrush}" Margin="4,0,0,6" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

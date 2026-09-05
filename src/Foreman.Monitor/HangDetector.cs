@@ -92,10 +92,12 @@ public sealed class HangDetector
         // on whether the human is even at the keyboard and whether the harness is running work vs parked waiting
         // for input. Monotonic — the effective threshold is always >= base, so this can only quiet expected idle,
         // never create an alert or shorten the window.
+        var operatorIdle = _operator?.MinutesSinceLastInput ?? 0;
+        var activity = ClassifyHarnessActivity(harness);
         var scaled    = IdleThresholdPolicy.Effective(
             baseThreshold,
-            _operator?.MinutesSinceLastInput ?? 0,
-            ClassifyHarnessActivity(harness),
+            operatorIdle,
+            activity,
             _settings.IdleThresholdScaling);
         var threshold = scaled.EffectiveMinutes;
 
@@ -151,6 +153,14 @@ public sealed class HangDetector
         // When context-scaling held the alert past the base threshold, say so in the message — the operator
         // should see WHY a process they'd expect at 30 min only surfaced later (e.g. they were away).
         var scaledNote = scaled.Multiplier > 1.0 ? $" — idle threshold {scaled.Reason}" : "";
+        var ownerTree = harness is null || string.IsNullOrEmpty(harness.HarnessType)
+            ? new List<ProcessRecord> { record }
+            : _tree.GetTreeByHarnessType(harness.HarnessType)
+                .Where(r => r.State != ProcessState.Terminated)
+                .ToList();
+        var learningFeatures = HangLearning.Capture(
+            record, harness, ownerTree, operatorIdle, activity, scaled,
+            _settings.IdleThresholdScaling.ActivityWindowMinutes);
 
         _bus.Publish(new HangDetectedEvent(
             DateTimeOffset.UtcNow,
@@ -164,7 +174,8 @@ public sealed class HangDetector
             spawnerName,
             ownerPid,
             ownerType,
-            ownerName
+            ownerName,
+            learningFeatures
         ) { ProcessStartTime = record.StartTime });
     }
 

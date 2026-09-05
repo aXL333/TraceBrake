@@ -90,6 +90,13 @@ public sealed class HangDetectorTests
         Assert.Equal("claude-code", hits[0].ParentHarnessType);
         Assert.Equal("node.exe", hits[0].ParentHarnessName);
         Assert.Contains("claude-code", hits[0].Message);
+        var features = Assert.IsType<Foreman.Core.Alerts.HangFeatureSnapshot>(hits[0].LearningFeatures);
+        Assert.Equal(Foreman.Core.Alerts.HangLearning.FeatureSchemaVersion, features.SchemaVersion);
+        Assert.True(features.SilentMinutes >= 10);
+        Assert.True(features.UptimeMinutes >= features.SilentMinutes);
+        Assert.Equal(Foreman.Core.Alerts.HarnessActivity.AtRest, features.HarnessActivity);
+        Assert.True(features.DirectHarnessChild);
+        Assert.Equal(2, features.TreeProcessCount);
     }
 
     [Fact]

@@ -18,6 +18,7 @@ public enum EventOrigin
 [JsonDerivedType(typeof(InfoEvent),               "info")]
 [JsonDerivedType(typeof(MonitoringNoticeEvent),   "monitoring")]
 [JsonDerivedType(typeof(EscalationEvent),         "escalation")]
+[JsonDerivedType(typeof(HangOutcomeEvent),         "hang-outcome")]
 public abstract record ForemanEvent(
     DateTimeOffset Timestamp,
     ForemanSeverity Severity,
@@ -98,8 +99,24 @@ public sealed record HangDetectedEvent(
     string? SpawnerName,
     int? ParentHarnessPid,
     string? ParentHarnessType,
-    string? ParentHarnessName
+    string? ParentHarnessName,
+    Foreman.Core.Alerts.HangFeatureSnapshot? LearningFeatures = null
 ) : ForemanEvent(Timestamp, ForemanSeverity.Medium, Source, Message);
+
+/// <summary>
+/// Append-only outcome/label for a prior hang candidate. Automatic recovery is observational
+/// evidence only; OperatorLabeled binary outcomes are the sole gold labels for training.
+/// </summary>
+public sealed record HangOutcomeEvent(
+    DateTimeOffset Timestamp,
+    string Source,
+    string Message,
+    string HangAlertId,
+    int ProcessId,
+    DateTimeOffset? HangProcessStartTime,
+    Foreman.Core.Alerts.HangOutcomeKind Outcome,
+    bool OperatorLabeled
+) : ForemanEvent(Timestamp, ForemanSeverity.Info, Source, Message);
 
 public sealed record OrphanDetectedEvent(
     DateTimeOffset Timestamp,

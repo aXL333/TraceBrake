@@ -79,8 +79,18 @@ public sealed class AlertResolver : IDisposable
             e.AutoResolved = true;
             e.ResolvedReason = reason;
             resolved++;
-            _bus.Publish(new InfoEvent(now, "Foreman.Alerts",
-                $"Alert auto-resolved ({reason}): {Trim(e.Message)}"));
+            if (e is HangDetectedEvent hang)
+            {
+                var outcome = reason == "I/O resumed"
+                    ? HangOutcomeKind.IoResumed
+                    : HangOutcomeKind.ProcessExited;
+                _bus.Publish(HangLearning.Outcome(hang, outcome, now, operatorLabeled: false));
+            }
+            else
+            {
+                _bus.Publish(new InfoEvent(now, "Foreman.Alerts",
+                    $"Alert auto-resolved ({reason}): {Trim(e.Message)}"));
+            }
         }
         return resolved;
     }
