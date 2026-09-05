@@ -341,10 +341,14 @@ a second opinion on Defender's verdicts, or a tool that makes the machine less s
 
 ## 7. Open questions for you
 
-1. **`W:` or `T:`?** VERIFIED: `T:\TOOLS\Foreman` and `W:\TOOLS\Foreman` **both exist**. The migration record says
-   `T:\TOOLS` is canonical and `W:` is dying, but this session and Codex are both working in `W:`, which also has
-   2374 GB free against T:'s 196 GB. This needs resolving before any path is written into a runbook, and the first
-   full Defender scan will hammer whichever disk is real.
+1. ~~**`W:` or `T:`?**~~ **RESOLVED 2026-09-05: `T:\TOOLS\Foreman` is the working folder.** The migration is done.
+   T: was ten commits behind and carried a partial drive-letter rewrite but no unique work; it was verified that no
+   file on T: held content absent from W: before anything was overwritten, a rollback branch
+   (`pre-migration-snapshot-2026-09-05`) was taken, and T: was then brought to W:'s exact history and working tree.
+   W: is retained as a backup only. Every path in this runbook and in the cutover procedure refers to
+   `T:\TOOLS\Foreman`, and **the Bitdefender exclusion must be re-pointed at `T:\TOOLS\Foreman` accordingly**, since
+   an exclusion still naming W: will not cover the tree now being built. The first full Defender scan will hammer
+   T:, which has 196 GB free.
 2. **Insider Preview.** This is 10.0.26220, not GA. Every behavioural guarantee here (automatic re-enablement, ASR
    and CFA on Home, the event ID map, Tamper Protection conditions) comes from GA documentation. That is a genuine
    operator decision, not a footnote: are you comfortable betting an AV removal on a preview build?

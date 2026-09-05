@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Checks (in order):
-    1. File inbox: W:\TOOLS\.cursor-inbox\*.md|*.txt|*.msg (excludes README/processed)
+    1. File inbox: T:\TOOLS\.cursor-inbox\*.md|*.txt|*.msg (excludes README/processed)
     2. Foreman mailbox: dotnet Foreman.TestHarness --harness cursor --probe
 
   When work exists, prints an AGENT_LOOP_WAKE sentinel on stdout (for monitored-shell /loop).

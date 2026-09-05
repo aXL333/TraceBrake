@@ -211,10 +211,10 @@ xUnit gates (Slices 0-2) run in CI on every commit. On-device gates (Slices 4-7)
 ---
 
 Relevant files (all absolute):
-- Broker/auditor edits: `W:/TOOLS/Foreman/src/Foreman.Core/ComputerUse/CuBroker.cs`, `CuAction.cs`, `FastPathAuditor.cs`, `AuditPipeline.cs`
-- New Core seams: `W:/TOOLS/Foreman/src/Foreman.Core/ComputerUse/{ICuExecutor,CuWindowRef,IDesktopWindowProbe,ICuCursorController}.cs`, `Foreman.Core/Ipc/Desktop/DesktopCuFrame.cs`, `Foreman.Core/Security/{CuSharedPanicFlag,ICuPanicSignal,CuDesktopState}.cs`
-- New sidecars: `W:/TOOLS/Foreman/src/Foreman.CuSidecar/`, `Foreman.CuCursorSidecar/`, `Foreman.CuDesktop/`
-- App wiring: `W:/TOOLS/Foreman/src/Foreman.App/ComputerUse/{DesktopCuController,DesktopCuExecutor,CuExecutorPump,Win32WindowProbe,CuCursorArbiter,CuCursorSkin,CuCursorRevertGuard,CuInputInjector,SharedMonopilotCursorController}.cs`, `App.xaml.cs` (~247-282), `CuOverlayWindow.xaml.cs`, `PanicController.cs`
+- Broker/auditor edits: `T:/TOOLS/Foreman/src/Foreman.Core/ComputerUse/CuBroker.cs`, `CuAction.cs`, `FastPathAuditor.cs`, `AuditPipeline.cs`
+- New Core seams: `T:/TOOLS/Foreman/src/Foreman.Core/ComputerUse/{ICuExecutor,CuWindowRef,IDesktopWindowProbe,ICuCursorController}.cs`, `Foreman.Core/Ipc/Desktop/DesktopCuFrame.cs`, `Foreman.Core/Security/{CuSharedPanicFlag,ICuPanicSignal,CuDesktopState}.cs`
+- New sidecars: `T:/TOOLS/Foreman/src/Foreman.CuSidecar/`, `Foreman.CuCursorSidecar/`, `Foreman.CuDesktop/`
+- App wiring: `T:/TOOLS/Foreman/src/Foreman.App/ComputerUse/{DesktopCuController,DesktopCuExecutor,CuExecutorPump,Win32WindowProbe,CuCursorArbiter,CuCursorSkin,CuCursorRevertGuard,CuInputInjector,SharedMonopilotCursorController}.cs`, `App.xaml.cs` (~247-282), `CuOverlayWindow.xaml.cs`, `PanicController.cs`
 - Trust-root references already in place: `ElevatedSidecarController.cs`, `PipeClientGuard.cs`, `SidecarIntegrity.cs`, `EtwSidecar/Program.cs`
 
 ---
