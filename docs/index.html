@@ -53,7 +53,7 @@
       <div class="hero__ambient" aria-hidden="true"></div>
       <div class="hero__copy reveal">
         <p class="eyebrow"><span>Local-first</span> Agent safety for Windows</p>
-        <h1>Every agent gets power.<br><em>Give it brakes.</em></h1>
+        <h1><span>Every agent</span><span>gets power.</span><em>Give it brakes.</em></h1>
         <p class="hero__lede">
           TraceBrake is the human-controlled safety broker and black box for AI agents.
           It watches behaviour, records what matters and puts a deliberate control point
@@ -78,18 +78,20 @@
           <span class="scope__core"></span>
           <span class="scope__sweep"></span>
         </div>
-        <div class="app-frame">
+        <figure class="app-frame" aria-labelledby="interface-caption">
           <div class="app-frame__bar">
             <div class="app-frame__lights" aria-hidden="true"><i></i><i></i><i></i></div>
-            <span>Live oversight</span>
-            <span class="app-frame__secure"><i aria-hidden="true"></i> Local</span>
+            <span>TraceBrake</span>
+            <span class="app-frame__preview-label">Interface illustration</span>
           </div>
-          <img src="assets/tab-overview.png" alt="TraceBrake dashboard showing active alerts, agent status and MCP clients">
-          <div class="app-frame__caption">
-            <span class="status-dot status-dot--amber" aria-hidden="true"></span>
-            <strong>Current alpha:</strong> TraceBrake
+          <div class="interface-preview">
+            <div class="interface-preview__heading"><strong>TRACE<span>BRAKE</span></strong><span>EXAMPLE DATA</span></div>
+            <div class="interface-preview__tabs" aria-hidden="true"><span>Overview</span><span>Processes</span><span>Event log</span></div>
+            <div class="interface-preview__metrics"><div><strong>01</strong><span>Request to review</span></div><div><strong>02</strong><span>Connected agents</span></div><div><strong>You</strong><span>Decision authority</span></div></div>
+            <div class="interface-preview__request"><span class="interface-preview__eyebrow">REVIEW REQUIRED</span><h2>An agent wants to change a protected file.</h2><p>Check the target and proposed action before deciding.</p><dl><div><dt>Agent</dt><dd>Example coding assistant</dd></div><div><dt>Action</dt><dd>Write configuration</dd></div><div><dt>State</dt><dd>Waiting for your decision</dd></div></dl></div>
           </div>
-        </div>
+          <figcaption id="interface-caption" class="app-frame__caption">Illustrative layout · example data · not connected to your machine</figcaption>
+        </figure>
       </div>
     </section>
 
